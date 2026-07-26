@@ -38,8 +38,16 @@ Use /tdd to complete the task.
 
 Before committing, run the feedback loops:
 
-- `npm run test` to run the tests
-- `npm run typecheck` to run the type checker
+- `make test` to run the tests
+- `make lint` to run the linter
+- `make check` to run the type checker
+
+Or `make verify` to run all three at once.
+
+Note: `make lint` enforces the core/adapter boundary. Modules under `src/core` are
+pure Lua and must never call the REAPER API — a `reaper` call there is reported as
+an undefined variable and fails the lint. If you need the REAPER API, the code
+belongs in `src/adapter`.
 
 # COMMIT
 
