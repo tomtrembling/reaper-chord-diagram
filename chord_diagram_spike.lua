@@ -1,38 +1,40 @@
 --[[
 @description Chord Diagram (spike)
-@version 0.3.0
+@version 0.4.0
 @author Tom Trembling
 @about
   Tracer bullet for the chord diagram plugin. Renders a HARDCODED voicing to
   PNGs and attaches them to the selected empty items.
 
-  RUN 1 established that LICE rendering, text and the state-chunk write all
-  work. It also showed that none of the three display flags is usable on its
-  own: flag 5 keeps proportions but tiles horizontally, flag 3 never tiles but
-  distorts the diagram badly on short or narrow items, and flag 1 tiles without
-  filling the item.
+  SETTLED SO FAR
+    - LICE rendering, text and the state-chunk write all work.
+    - Grid lines vanish when a large canvas is scaled down to item size, so
+      stroke weight is proportional to canvas size rather than a fixed pixel
+      count.
+    - Flag 3 (stretch) never repeats but distorts. Flags 1 and 5 keep the
+      proportions but tile into repeats on wide items.
 
-  RUN 2 settled the display flag: 1 (centre/tile), unpadded. Padding did not
-  remove the tiling, and flag 1's repeats only appear at item widths that are
-  not used in practice.
+  RUN 4 — three changes:
+    1. Square power-of-two canvas (1024) for quality.
+    2. More clearance between the chord name and the diagram, which were
+       slightly crossing over.
+    3. The requirement is FIT, NEVER REPEAT — and none of the flags tried so
+       far does that. IMGRESOURCEFLAGS is a bitfield and the documented values
+       only cover part of it: 1 = centre/tile, 3 = 1|2, 5 = 1|4. So bits 2 and
+       4 exist on their own and the values 2, 4, 6 and 7 have never been tried.
+       This run sweeps every value from 1 to 7 to find a true fit mode.
 
-  RUN 3 tackles what run 2 exposed — grid lines VANISH at practical item sizes.
-  This is a downscaling artefact rather than a lack of resolution: a 2px line in
-  a 520px-tall image is 0.4% of its height, so at an 80px item height it becomes
-  a quarter of a pixel and is dropped. Rendering larger makes it worse. The fix
-  is heavier strokes relative to the canvas, and a canvas nearer the displayed
-  size. This run sweeps both.
-
-  Each variant writes its own settings into the corner of the image, so a
-  screenshot identifies itself.
+  Each image is labelled with its own flag value, so a screenshot identifies
+  itself.
 
   HOW TO USE
     - Save the project first.
-    - Create SIX empty items on a track and select them all.
+    - Create SEVEN empty items on a track and select them all.
     - Run this action.
-    - Shrink the items to a realistic working height, then count the strings
-      and fret lines in each. Which variants keep all of them?
+    - Resize items wide, short, tall and narrow. Look for a flag that always
+      shows exactly ONE diagram, never distorted and never repeated.
 @changelog
+  0.4.0 Square 1024 canvas, more title clearance, sweep all flag values 1-7.
   0.3.0 Sweep canvas height and stroke weight; lines vanish when downscaled.
   0.2.0 Test padded canvases against the display flags.
   0.1.0 Initial spike.
@@ -42,44 +44,39 @@
 -- CONFIG — flip these and re-run; no new build needed.
 --------------------------------------------------------------------------------
 
--- Each variant is applied to the correspondingly-numbered selected item.
---   flag = IMGRESOURCEFLAGS: 5 full-height, 3 stretch, 1 centre/tile
---   pad  = canvas width as a multiple of the diagram width. 1.0 is run 1's
---          behaviour; higher values add white padding either side.
--- Run 2 verdict: flag 1 with no padding is the choice. Padding did not remove
--- the tiling, and flag 1's repeats only appear at item widths that would not be
--- used in practice. Flag 3 stops repeats but stretches the diagram.
---
--- The real problem run 2 exposed is that grid lines VANISH at practical item
--- sizes. That is a downscaling artefact, not a lack of resolution: a 2px line
--- in a 520px-tall image is 0.4% of the height, so at an 80px item height it
--- becomes a quarter of a pixel and gets dropped. Rendering larger makes this
--- worse, not better.
---
--- Run 3 therefore sweeps two things: how tall the canvas is (less downscaling
--- is safer) and how heavy the strokes are relative to it. `stroke` is a
--- divisor — SMALLER means THICKER lines.
+-- One variant per selected item. IMGRESOURCEFLAGS is a bitfield; only 1, 3 and
+-- 5 are documented, so this sweeps the whole low range looking for a mode that
+-- fits the image without tiling it.
+--   1 = centre/tile (documented)      2 = ? untested
+--   3 = stretch (documented)          4 = ? untested
+--   5 = full height (documented)      6 = ? untested
+--   7 = ? untested
 local VARIANTS = {
-  { flag = 1, pad = 1.0, h = 520, stroke = 260 },  -- control: run-2 geometry
-  { flag = 1, pad = 1.0, h = 520, stroke = 60  },
-  { flag = 1, pad = 1.0, h = 520, stroke = 35  },
-  { flag = 1, pad = 1.0, h = 260, stroke = 60  },
-  { flag = 1, pad = 1.0, h = 260, stroke = 35  },
-  { flag = 1, pad = 1.0, h = 160, stroke = 35  },
+  { flag = 1 }, { flag = 2 }, { flag = 3 }, { flag = 4 },
+  { flag = 5 }, { flag = 6 }, { flag = 7 },
 }
 
 local CONFIG = {
-  RELATIVE_PATH = true,
-  NOTE_TEXT     = "Cadd9",
-  DRAW_TEXT     = true,
-  -- Transparent background instead of white, so the item's own colour shows
-  -- through rather than the diagram sitting in a white box. The reference
-  -- images from the manual workflow appear to be transparent PNGs.
-  TRANSPARENT_BG = false,
-  LABEL_VARIANT = true,   -- write "f1 h520 s60" into the image corner
-  WIDTH         = 400,    -- base ratio only; variant.h drives actual size
-  HEIGHT        = 520,
-  FOLDER        = "chord-diagrams",
+  SIZE           = 1024,  -- square, power of two. 512 also fine.
+  STROKE         = 64,    -- line width = SIZE / STROKE. Smaller = thicker.
+  RELATIVE_PATH  = true,
+  NOTE_TEXT      = "Cadd9",
+  DRAW_TEXT      = true,
+  TRANSPARENT_BG = false, -- let the item colour show through instead of white
+  LABEL_VARIANT  = true,
+  FOLDER         = "chord-diagrams",
+}
+
+-- Vertical layout, as fractions of the canvas size. The gap between TITLE_BOT
+-- and the markers is the clearance that was too tight in run 3.
+local LAYOUT = {
+  TITLE_TOP  = 0.04,
+  TITLE_BOT  = 0.17,
+  MARKER_Y   = 0.245,  -- the x/o row above the nut
+  NUT_Y      = 0.31,
+  GRID_BOT   = 0.95,
+  GRID_LEFT  = 0.20,
+  GRID_RIGHT = 0.80,
 }
 
 -- Cadd9 = x32030, low E to high E. -1 muted, 0 open, n fret.
@@ -117,8 +114,10 @@ end
 
 local SEP = package.config:sub(1, 1)
 
-say("Chord Diagram spike v0.3.0")
+say("Chord Diagram spike v0.4.0")
 say("REAPER %s   %s", reaper.GetAppVersion(), reaper.GetOS())
+say("Canvas %dx%d, stroke %dpx", CONFIG.SIZE, CONFIG.SIZE,
+  math.floor(CONFIG.SIZE / CONFIG.STROKE))
 say("")
 
 if not reaper.APIExists("JS_LICE_CreateBitmap") then
@@ -144,14 +143,13 @@ end
 
 if #items == 0 then
   reaper.ShowMessageBox(
-    "Select at least one EMPTY item.\n\n" ..
-    "Six gives one per variant — see the top of the script.",
+    "Select at least one EMPTY item.\n\nSeven gives one per flag value.",
     "No empty item selected", 0)
   return
 end
 say("Empty items selected: %d  (variants defined: %d)", #items, #VARIANTS)
 if #items < #VARIANTS then
-  say("NOTE: only the first %d variants will be tested.", #items)
+  say("NOTE: only flags 1-%d will be tested this run.", #items)
 end
 say("")
 
@@ -163,7 +161,7 @@ local WHITE, BLACK, CLEAR = 0xFFFFFFFF, 0xFF000000, 0x00000000
 
 local function rect(bmp, x, y, w, h, colour)
   reaper.JS_LICE_FillRect(bmp, math.floor(x), math.floor(y),
-    math.floor(w), math.floor(h), colour, 1.0, "COPY")
+    math.max(1, math.floor(w)), math.max(1, math.floor(h)), colour, 1.0, "COPY")
 end
 
 local function disc(bmp, cx, cy, r, colour)
@@ -171,7 +169,6 @@ local function disc(bmp, cx, cy, r, colour)
     math.floor(r), colour, 1.0, "COPY", true)
 end
 
---- Draw text, returning false if the font could not be made.
 local function text(bmp, str, size, weight, x1, y1, x2, y2, colour)
   local gdi = reaper.JS_GDI_CreateFont(size, weight, 0, false, false, false, "Arial")
   if not gdi then return false end
@@ -188,78 +185,71 @@ end
 
 --- Render one variant to a PNG. Returns the path relative to the project.
 local function render(variant)
-  -- Canvas height drives everything; width keeps the original 400:520 ratio.
-  local H       = variant.h or CONFIG.HEIGHT
-  local W       = math.floor(H * (CONFIG.WIDTH / CONFIG.HEIGHT))
-  local canvasW = math.floor(W * variant.pad)
-  local offX    = math.floor((canvasW - W) / 2)
+  local S      = CONFIG.SIZE
+  local lineW  = math.max(2, math.floor(S / CONFIG.STROKE))
+  local left   = S * LAYOUT.GRID_LEFT
+  local right  = S * LAYOUT.GRID_RIGHT
+  local nutY   = S * LAYOUT.NUT_Y
+  local botY   = S * LAYOUT.GRID_BOT
+  local markY  = S * LAYOUT.MARKER_Y
 
-  local marginX   = math.floor(W * 0.16)
-  local topY      = math.floor(H * 0.30)
-  local bottomY   = math.floor(H * 0.93)
-  local gridW     = W - marginX * 2
+  local gridW     = right - left
   local stringGap = gridW / 5
-  local fretGap   = (bottomY - topY) / 5
-  -- Stroke weight is proportional to canvas height, so that lines survive being
-  -- scaled down to item size. A smaller divisor gives thicker lines.
-  local lineW     = math.max(2, math.floor(H / (variant.stroke or 260)))
-  local dotR      = math.floor(stringGap * 0.30)
-  local function stringX(i) return offX + marginX + (i - 1) * stringGap end
+  local fretGap   = (botY - nutY) / 5
+  local dotR      = stringGap * 0.34
+  local function stringX(i) return left + (i - 1) * stringGap end
 
-  local bmp = reaper.JS_LICE_CreateBitmap(true, canvasW, H)
+  local bmp = reaper.JS_LICE_CreateBitmap(true, S, S)
   if not bmp then error("JS_LICE_CreateBitmap returned nil") end
   reaper.JS_LICE_Clear(bmp, CONFIG.TRANSPARENT_BG and CLEAR or WHITE)
 
-  -- Nut
-  rect(bmp, offX + marginX, topY - lineW * 2, gridW, lineW * 3, BLACK)
+  -- Nut: noticeably heavier than the frets.
+  rect(bmp, left - lineW / 2, nutY - lineW, gridW + lineW, lineW * 2.5, BLACK)
   -- Frets
   for f = 1, 5 do
-    rect(bmp, offX + marginX, topY + f * fretGap, gridW, lineW, BLACK)
+    rect(bmp, left - lineW / 2, nutY + f * fretGap, gridW + lineW, lineW, BLACK)
   end
   -- Strings
   for s = 1, 6 do
-    rect(bmp, stringX(s) - lineW / 2, topY, lineW, bottomY - topY, BLACK)
+    rect(bmp, stringX(s) - lineW / 2, nutY, lineW, botY - nutY, BLACK)
   end
 
-  -- Dots and open/muted markers
-  local markY = topY - lineW * 6
+  -- Dots, and the open/muted row above the nut
   for s = 1, 6 do
     local fret, x = VOICING[s], stringX(s)
     if fret == -1 then
-      local a = dotR * 0.8
-      for d = -a, a, 0.5 do
-        rect(bmp, x + d, markY + d, lineW, lineW, BLACK)
-        rect(bmp, x + d, markY - d, lineW, lineW, BLACK)
+      local a, step = dotR * 0.75, math.max(1, lineW / 3)
+      for d = -a, a, step do
+        rect(bmp, x + d - lineW / 2, markY + d - lineW / 2, lineW, lineW, BLACK)
+        rect(bmp, x + d - lineW / 2, markY - d - lineW / 2, lineW, lineW, BLACK)
       end
     elseif fret == 0 then
-      disc(bmp, x, markY, dotR * 0.75, BLACK)
-      disc(bmp, x, markY, dotR * 0.75 - lineW, WHITE)
+      disc(bmp, x, markY, dotR * 0.7, BLACK)
+      disc(bmp, x, markY, dotR * 0.7 - lineW, CONFIG.TRANSPARENT_BG and CLEAR or WHITE)
     else
-      disc(bmp, x, topY + (fret - 0.5) * fretGap, dotR, BLACK)
+      disc(bmp, x, nutY + (fret - 0.5) * fretGap, dotR, BLACK)
     end
   end
 
   if CONFIG.DRAW_TEXT then
-    text(bmp, CHORD_NAME, math.floor(H * 0.10), 700,
-      offX, math.floor(H * 0.10), offX + W, math.floor(H * 0.26))
+    text(bmp, CHORD_NAME, math.floor(S * (LAYOUT.TITLE_BOT - LAYOUT.TITLE_TOP)), 700,
+      0, math.floor(S * LAYOUT.TITLE_TOP), S, math.floor(S * LAYOUT.TITLE_BOT))
   end
 
-  local label = string.format("f%d h%d s%d", variant.flag, H, variant.stroke or 260)
+  local label = string.format("flag%d", variant.flag)
   if CONFIG.LABEL_VARIANT then
-    -- Bold and black: a faint label would vanish at the same sizes the grid
-    -- lines do, which would defeat the point of labelling.
-    text(bmp, label, math.max(11, math.floor(H * 0.07)), 700,
-      math.floor(lineW), H - math.floor(H * 0.09), canvasW, H, BLACK)
+    text(bmp, label, math.max(11, math.floor(S * 0.045)), 700,
+      math.floor(lineW), math.floor(S * 0.955), S, S, BLACK)
   end
 
-  local rel = CONFIG.FOLDER .. SEP .. "spike-" .. label:gsub("[ .]", "") .. ".png"
+  local rel = CONFIG.FOLDER .. SEP .. "spike-" .. label .. ".png"
   local abs = projdir .. SEP .. rel
   local ok = reaper.JS_LICE_WritePNG(abs, bmp, CONFIG.TRANSPARENT_BG and true or false)
   pcall(reaper.JS_LICE_DestroyBitmap, bmp)
   if ok == false then error("JS_LICE_WritePNG returned false") end
   if not reaper.file_exists(abs) then error("PNG not found after write: " .. abs) end
 
-  return rel, abs, canvasW
+  return rel
 end
 
 stage("create image folder", function()
@@ -286,8 +276,7 @@ reaper.Undo_BeginBlock()
 for i, item in ipairs(items) do
   local variant = VARIANTS[i]
   if variant then
-    stage(string.format("item %d: flag %d, canvas height %d, stroke 1/%d",
-      i, variant.flag, variant.h or CONFIG.HEIGHT, variant.stroke or 260), function()
+    stage(string.format("item %d: IMGRESOURCEFLAGS %d", i, variant.flag), function()
       local rel = render(variant)
       local stored = CONFIG.RELATIVE_PATH and rel or (projdir .. SEP .. rel)
       local ok, chunk = reaper.GetItemStateChunk(item, "", false)
@@ -314,15 +303,17 @@ else
   say("%d step(s) FAILED — see above.", failures)
 end
 say("")
-say("Labels in the bottom-left of each image read:  f<flag> h<canvas height> s<stroke divisor>")
-say("A SMALLER stroke number means THICKER lines.")
+say("Each image is labelled with its flag value in the bottom-left corner.")
 say("")
-say("The question this run answers: which one keeps all six strings and all")
-say("five fret lines visible at the item size you would actually use?")
+say("Flags 1, 3 and 5 are the documented ones and are already known:")
+say("  1 centre/tile — right proportions, but repeats on wide items")
+say("  3 stretch     — never repeats, but distorts")
+say("  5 full height — right proportions, but repeats")
 say("")
-say("  * shrink the items to a realistic working height")
-say("  * count the strings and frets in each — any missing?")
-say("  * of the ones that survive, which still looks like a chord chart")
-say("    rather than a set of fat bars?")
+say("Flags 2, 4, 6 and 7 are UNDOCUMENTED and are the point of this run.")
+say("Resize items wide, short, tall and narrow, and look for one that always")
+say("shows exactly ONE diagram, correctly proportioned and never repeated.")
+say("")
+say("If one of them does that, it is the setting we ship.")
 
 flush()
