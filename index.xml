@@ -1,2 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1"/>
+<index version="1" name="Chord Diagram" commit="d79ed4b4d7ddd9769dfb27a4e640b9863c6e0862">
+  <category name="Chord Diagram">
+    <reapack name="chord_diagram_spike.lua" type="script" desc="Chord Diagram (spike)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+{\*\listtable{\list\listtemplateid1{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelindent0{\leveltext\'01\u8226 ?;}{\levelnumbers;}\fi-360\li360\lin360 }{\listname ;}\listid1}
+{\list\listtemplateid2{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelindent0{\leveltext\'01\u8226 ?;}{\levelnumbers;}\fi-360\li360\lin360 }{\listname ;}\listid2}
+}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}{\listoverride\listid2\listoverridecount0\ls2}}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \fs24 \sa180 \li0 \fi0 Tracer bullet for the chord diagram plugin. Renders a HARDCODED voicing to PNGs and attaches them to the selected empty items.\par}
+{\pard \ql \f0 \fs24 \sa180 \li0 \fi0 SETTLED, over four runs on the tester's machine:\par}
+{\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls1\ilvl0\tx360 {\listtext\tab \bullet \tab} LICE rendering, text drawing and the state-chunk write all work.\par}
+{\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls1\ilvl0\tx360 {\listtext\tab \bullet \tab} IMGRESOURCEFLAGS 3 on a square 1024 canvas. Flag 3 is the only value that never repeats the image; flags 1 and 5 keep the proportions but tile on wide items. At this canvas size the stretching is mild.\par}
+{\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls1\ilvl0\tx360 {\listtext\tab \bullet \tab} Stroke weight must be proportional to canvas size, never a fixed pixel count: thin lines vanish when REAPER scales the image down to item height.\par}
+{\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls1\ilvl0\tx360 {\listtext\tab \bullet \tab} The image path is stored relative to the project, so projects stay portable.\sa180\par}
+{\pard \ql \f0 \fs24 \sa180 \li0 \fi0 This remains a SPIKE \u8212- the voicing is hardcoded and there is no UI. Its job was to prove the chain end to end and settle the display settings, which it has done. Slice 003 replaces it with the real modules.\par}
+{\pard \ql \f0 \fs24 \sa180 \li0 \fi0 HOW TO USE\par}
+{\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls2\ilvl0\tx360 {\listtext\tab \bullet \tab} Save the project first.\par}
+{\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls2\ilvl0\tx360 {\listtext\tab \bullet \tab} Create an empty item on a track and select it.\par}
+{\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls2\ilvl0\tx360 {\listtext\tab \bullet \tab} Run this action.\sa180\par}
+}
+]]></description>
+      </metadata>
+      <version name="0.5.0" author="Tom Trembling" time="2026-07-26T21:19:01Z">
+        <changelog><![CDATA[0.5.0 Settle on IMGRESOURCEFLAGS 3 with the square 1024 canvas.
+0.4.0 Square 1024 canvas, more title clearance, sweep all flag values 1-7.
+0.3.0 Sweep canvas height and stroke weight; lines vanish when downscaled.
+0.2.0 Test padded canvases against the display flags.
+0.1.0 Initial spike.]]></changelog>
+        <source main="main">https://github.com/tomtrembling/reaper-chord-diagram/raw/d79ed4b4d7ddd9769dfb27a4e640b9863c6e0862/Chord%20Diagram/chord_diagram_spike.lua</source>
+      </version>
+    </reapack>
+  </category>
+</index>

@@ -10,6 +10,23 @@ that a track makes sense again months later.
 **Status:** in development. See `starter-brief.md` for the decision record, `issues/prd.md` for the
 PRD, and `issues/` for the work breakdown.
 
+## Install
+
+In REAPER: **Extensions → ReaPack → Import repositories**, and paste:
+
+```
+https://github.com/tomtrembling/reaper-chord-diagram/raw/main/index.xml
+```
+
+Then **Extensions → ReaPack → Browse packages**, find *Chord Diagram*, and install. Updates arrive
+via **Extensions → ReaPack → Synchronise packages**.
+
+Requires ReaImGui and js_ReaScriptAPI, both installable through ReaPack. The script checks for them
+at startup and names any that are missing.
+
+> The current package is a **spike**: the voicing is hardcoded and there is no UI. It exists to prove
+> the rendering chain and settle display settings. See `issues/002-tracer-bullet-chord-on-item.md`.
+
 ## Prerequisites
 
 **To use the plugin** (once released):

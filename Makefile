@@ -7,7 +7,7 @@
 BIN   := .luarocks/bin
 LUA54 := $(shell brew --prefix lua@5.4 2>/dev/null)
 
-.PHONY: verify syntax test lint check install-deps clean
+.PHONY: verify syntax test lint check index install-deps clean
 
 verify: syntax test lint check
 
@@ -22,7 +22,7 @@ test:
 	@$(BIN)/busted
 
 lint:
-	@$(BIN)/luacheck src spec Chord Diagram/chord_diagram_spike.lua
+	@$(BIN)/luacheck src spec "Chord Diagram/chord_diagram_spike.lua"
 
 check:
 	@rm -rf .luals-log
@@ -33,6 +33,14 @@ check:
 		echo "Type check FAILED:"; cat .luals-log/check.json; exit 1; \
 	fi
 	@echo "Type check passed"
+
+# Regenerate the ReaPack index. Reads COMMITTED state, not the working tree —
+# header changes must be committed before they appear in the index.
+# Requires: brew install ruby pandoc && gem install reapack-index
+index:
+	@PATH="$$(brew --prefix ruby)/bin:$$PATH"; \
+	 PATH="$$(gem environment gemdir)/bin:$$PATH"; export PATH; \
+	 reapack-index --name 'Chord Diagram' --ignore src --ignore spec --no-commit
 
 install-deps:
 	luarocks --lua-version=5.4 --lua-dir=$(LUA54) --tree .luarocks install busted
