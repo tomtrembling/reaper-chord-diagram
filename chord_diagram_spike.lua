@@ -1,6 +1,6 @@
 --[[
 @description Chord Diagram (spike)
-@version 0.2.0
+@version 0.3.0
 @author Tom Trembling
 @about
   Tracer bullet for the chord diagram plugin. Renders a HARDCODED voicing to
@@ -12,10 +12,16 @@
   distorts the diagram badly on short or narrow items, and flag 1 tiles without
   filling the item.
 
-  RUN 2 tests the fix. Tiling happens when the height-scaled image is narrower
-  than the item, so this pads the canvas with white either side. A wide image
-  scaled to item height should exceed the item's width, leaving nothing to tile
-  and pushing any cropping onto blank padding rather than the diagram.
+  RUN 2 settled the display flag: 1 (centre/tile), unpadded. Padding did not
+  remove the tiling, and flag 1's repeats only appear at item widths that are
+  not used in practice.
+
+  RUN 3 tackles what run 2 exposed — grid lines VANISH at practical item sizes.
+  This is a downscaling artefact rather than a lack of resolution: a 2px line in
+  a 520px-tall image is 0.4% of its height, so at an 80px item height it becomes
+  a quarter of a pixel and is dropped. Rendering larger makes it worse. The fix
+  is heavier strokes relative to the canvas, and a canvas nearer the displayed
+  size. This run sweeps both.
 
   Each variant writes its own settings into the corner of the image, so a
   screenshot identifies itself.
@@ -24,9 +30,10 @@
     - Save the project first.
     - Create SIX empty items on a track and select them all.
     - Run this action.
-    - Resize items: taller, shorter, narrower. Look for the variant that keeps
-      exactly one undistorted, legible diagram in every shape.
+    - Shrink the items to a realistic working height, then count the strings
+      and fret lines in each. Which variants keep all of them?
 @changelog
+  0.3.0 Sweep canvas height and stroke weight; lines vanish when downscaled.
   0.2.0 Test padded canvases against the display flags.
   0.1.0 Initial spike.
 --]]
@@ -39,26 +46,34 @@
 --   flag = IMGRESOURCEFLAGS: 5 full-height, 3 stretch, 1 centre/tile
 --   pad  = canvas width as a multiple of the diagram width. 1.0 is run 1's
 --          behaviour; higher values add white padding either side.
--- Run 1 verdict from the tester: flag 1 looked best. It is the only flag that
--- never distorts the diagram — its sole failure is tiling into repeats when the
--- item is wide relative to the image. Padding is the fix for exactly that, so
--- run 2 sweeps padding against flag 1, keeping one of each alternative as a
--- control.
+-- Run 2 verdict: flag 1 with no padding is the choice. Padding did not remove
+-- the tiling, and flag 1's repeats only appear at item widths that would not be
+-- used in practice. Flag 3 stops repeats but stretches the diagram.
+--
+-- The real problem run 2 exposed is that grid lines VANISH at practical item
+-- sizes. That is a downscaling artefact, not a lack of resolution: a 2px line
+-- in a 520px-tall image is 0.4% of the height, so at an 80px item height it
+-- becomes a quarter of a pixel and gets dropped. Rendering larger makes this
+-- worse, not better.
+--
+-- Run 3 therefore sweeps two things: how tall the canvas is (less downscaling
+-- is safer) and how heavy the strokes are relative to it. `stroke` is a
+-- divisor — SMALLER means THICKER lines.
 local VARIANTS = {
-  { flag = 1, pad = 1.0 },   -- what the tester saw and preferred
-  { flag = 1, pad = 2.0 },
-  { flag = 1, pad = 3.0 },
-  { flag = 1, pad = 4.0 },
-  { flag = 5, pad = 3.0 },   -- control: best of the proportion-preserving alt
-  { flag = 3, pad = 1.0 },   -- control: the distorting one, for comparison
+  { flag = 1, pad = 1.0, h = 520, stroke = 260 },  -- control: run-2 geometry
+  { flag = 1, pad = 1.0, h = 520, stroke = 60  },
+  { flag = 1, pad = 1.0, h = 520, stroke = 35  },
+  { flag = 1, pad = 1.0, h = 260, stroke = 60  },
+  { flag = 1, pad = 1.0, h = 260, stroke = 35  },
+  { flag = 1, pad = 1.0, h = 160, stroke = 35  },
 }
 
 local CONFIG = {
   RELATIVE_PATH = true,
   NOTE_TEXT     = "Cadd9",
   DRAW_TEXT     = true,
-  LABEL_VARIANT = true,   -- write "flag5 pad3.0" into the image corner
-  WIDTH         = 400,    -- diagram width; canvas is WIDTH * pad
+  LABEL_VARIANT = true,   -- write "f1 h520 s60" into the image corner
+  WIDTH         = 400,    -- base ratio only; variant.h drives actual size
   HEIGHT        = 520,
   FOLDER        = "chord-diagrams",
 }
@@ -98,7 +113,7 @@ end
 
 local SEP = package.config:sub(1, 1)
 
-say("Chord Diagram spike v0.2.0")
+say("Chord Diagram spike v0.3.0")
 say("REAPER %s   %s", reaper.GetAppVersion(), reaper.GetOS())
 say("")
 
@@ -140,8 +155,7 @@ say("")
 -- Render
 --------------------------------------------------------------------------------
 
-local W, H = CONFIG.WIDTH, CONFIG.HEIGHT
-local WHITE, BLACK, GREY = 0xFFFFFFFF, 0xFF000000, 0xFF999999
+local WHITE, BLACK = 0xFFFFFFFF, 0xFF000000
 
 local function rect(bmp, x, y, w, h, colour)
   reaper.JS_LICE_FillRect(bmp, math.floor(x), math.floor(y),
@@ -170,6 +184,9 @@ end
 
 --- Render one variant to a PNG. Returns the path relative to the project.
 local function render(variant)
+  -- Canvas height drives everything; width keeps the original 400:520 ratio.
+  local H       = variant.h or CONFIG.HEIGHT
+  local W       = math.floor(H * (CONFIG.WIDTH / CONFIG.HEIGHT))
   local canvasW = math.floor(W * variant.pad)
   local offX    = math.floor((canvasW - W) / 2)
 
@@ -179,7 +196,9 @@ local function render(variant)
   local gridW     = W - marginX * 2
   local stringGap = gridW / 5
   local fretGap   = (bottomY - topY) / 5
-  local lineW     = math.max(2, math.floor(W / 160))
+  -- Stroke weight is proportional to canvas height, so that lines survive being
+  -- scaled down to item size. A smaller divisor gives thicker lines.
+  local lineW     = math.max(2, math.floor(H / (variant.stroke or 260)))
   local dotR      = math.floor(stringGap * 0.30)
   local function stringX(i) return offX + marginX + (i - 1) * stringGap end
 
@@ -221,11 +240,12 @@ local function render(variant)
       offX, math.floor(H * 0.10), offX + W, math.floor(H * 0.26))
   end
 
-  local label = string.format("flag%d pad%.1f", variant.flag, variant.pad)
+  local label = string.format("f%d h%d s%d", variant.flag, H, variant.stroke or 260)
   if CONFIG.LABEL_VARIANT then
-    -- Bottom-left of the whole canvas, so it survives cropping of the padding.
-    text(bmp, label, math.floor(H * 0.05), 400,
-      8, H - math.floor(H * 0.07), canvasW, H, GREY)
+    -- Bold and black: a faint label would vanish at the same sizes the grid
+    -- lines do, which would defeat the point of labelling.
+    text(bmp, label, math.max(11, math.floor(H * 0.07)), 700,
+      math.floor(lineW), H - math.floor(H * 0.09), canvasW, H, BLACK)
   end
 
   local rel = CONFIG.FOLDER .. SEP .. "spike-" .. label:gsub("[ .]", "") .. ".png"
@@ -262,8 +282,8 @@ reaper.Undo_BeginBlock()
 for i, item in ipairs(items) do
   local variant = VARIANTS[i]
   if variant then
-    stage(string.format("item %d: flag %d, pad %.1f (canvas %d x %d)",
-      i, variant.flag, variant.pad, math.floor(W * variant.pad), H), function()
+    stage(string.format("item %d: flag %d, canvas height %d, stroke 1/%d",
+      i, variant.flag, variant.h or CONFIG.HEIGHT, variant.stroke or 260), function()
       local rel = render(variant)
       local stored = CONFIG.RELATIVE_PATH and rel or (projdir .. SEP .. rel)
       local ok, chunk = reaper.GetItemStateChunk(item, "", false)
@@ -290,13 +310,15 @@ else
   say("%d step(s) FAILED — see above.", failures)
 end
 say("")
-say("Each image is labelled in its bottom-left corner with its own settings.")
+say("Labels in the bottom-left of each image read:  f<flag> h<canvas height> s<stroke divisor>")
+say("A SMALLER stroke number means THICKER lines.")
 say("")
-say("What to look for — resize items taller, shorter and narrower:")
-say("  * exactly ONE diagram per item (no repeats)")
-say("  * the grid stays square-ish (not squashed or stretched)")
-say("  * the title stays fully visible (not cropped)")
+say("The question this run answers: which one keeps all six strings and all")
+say("five fret lines visible at the item size you would actually use?")
 say("")
-say("The winner is the variant that holds all three at every item shape.")
+say("  * shrink the items to a realistic working height")
+say("  * count the strings and frets in each — any missing?")
+say("  * of the ones that survive, which still looks like a chord chart")
+say("    rather than a set of fat bars?")
 
 flush()
