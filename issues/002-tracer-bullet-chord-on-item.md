@@ -52,6 +52,25 @@ therefore be built to answer everything in **one** run:
 - [ ] The tester installs it via ReaPack on Windows and runs the action successfully
 - [ ] The image reference resolves from a path relative to the project
 
+## Findings — run 1 (REAPER 7.78/x64, Win64)
+
+**The rendering chain works end to end.** Every stage reported ok on the first run:
+
+- `JS_LICE_*` bitmap creation, shape drawing and `JS_LICE_WritePNG` all succeeded, so **O1 is
+  resolved** — LICE rendering is viable and the external-renderer fallback is not needed. The
+  argument orders used were correct, despite being unverifiable from any online source.
+- **Text rendering worked**, via `JS_GDI_CreateFont` + `JS_LICE_SetFontFromGDI` + `JS_LICE_DrawText`
+  with Arial. This was the most platform-sensitive part of the plan.
+- The state chunk write succeeded on all three items, using the `RESOURCEFN` + `IMGRESOURCEFLAGS`
+  block inserted before the chunk's closing `>`.
+- The image path stored **relative** to the project (`chord-diagrams\spike-Cadd9.png`) and resolved
+  correctly, confirming project portability.
+
+Consequently **risk 1 in the parent PRD is retired**: the plan holds as written, and no fallback
+renderer is required.
+
+Still open: which display flag frames the diagram correctly (**O2**), pending visual review.
+
 ## Blocked by
 
 - Blocked by `issues/001-dev-infrastructure.md`
