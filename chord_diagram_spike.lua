@@ -1,39 +1,32 @@
 --[[
 @description Chord Diagram (spike)
-@version 0.4.0
+@version 0.5.0
 @author Tom Trembling
 @about
   Tracer bullet for the chord diagram plugin. Renders a HARDCODED voicing to
   PNGs and attaches them to the selected empty items.
 
-  SETTLED SO FAR
-    - LICE rendering, text and the state-chunk write all work.
-    - Grid lines vanish when a large canvas is scaled down to item size, so
-      stroke weight is proportional to canvas size rather than a fixed pixel
-      count.
-    - Flag 3 (stretch) never repeats but distorts. Flags 1 and 5 keep the
-      proportions but tile into repeats on wide items.
+  SETTLED, over four runs on the tester's machine:
+    - LICE rendering, text drawing and the state-chunk write all work.
+    - IMGRESOURCEFLAGS 3 on a square 1024 canvas. Flag 3 is the only value
+      that never repeats the image; flags 1 and 5 keep the proportions but
+      tile on wide items. At this canvas size the stretching is mild.
+    - Stroke weight must be proportional to canvas size, never a fixed pixel
+      count: thin lines vanish when REAPER scales the image down to item
+      height.
+    - The image path is stored relative to the project, so projects stay
+      portable.
 
-  RUN 4 — three changes:
-    1. Square power-of-two canvas (1024) for quality.
-    2. More clearance between the chord name and the diagram, which were
-       slightly crossing over.
-    3. The requirement is FIT, NEVER REPEAT — and none of the flags tried so
-       far does that. IMGRESOURCEFLAGS is a bitfield and the documented values
-       only cover part of it: 1 = centre/tile, 3 = 1|2, 5 = 1|4. So bits 2 and
-       4 exist on their own and the values 2, 4, 6 and 7 have never been tried.
-       This run sweeps every value from 1 to 7 to find a true fit mode.
-
-  Each image is labelled with its own flag value, so a screenshot identifies
-  itself.
+  This remains a SPIKE — the voicing is hardcoded and there is no UI. Its job
+  was to prove the chain end to end and settle the display settings, which it
+  has done. Slice 003 replaces it with the real modules.
 
   HOW TO USE
     - Save the project first.
-    - Create SEVEN empty items on a track and select them all.
+    - Create an empty item on a track and select it.
     - Run this action.
-    - Resize items wide, short, tall and narrow. Look for a flag that always
-      shows exactly ONE diagram, never distorted and never repeated.
 @changelog
+  0.5.0 Settle on IMGRESOURCEFLAGS 3 with the square 1024 canvas.
   0.4.0 Square 1024 canvas, more title clearance, sweep all flag values 1-7.
   0.3.0 Sweep canvas height and stroke weight; lines vanish when downscaled.
   0.2.0 Test padded canvases against the display flags.
@@ -44,16 +37,15 @@
 -- CONFIG — flip these and re-run; no new build needed.
 --------------------------------------------------------------------------------
 
--- One variant per selected item. IMGRESOURCEFLAGS is a bitfield; only 1, 3 and
--- 5 are documented, so this sweeps the whole low range looking for a mode that
--- fits the image without tiling it.
---   1 = centre/tile (documented)      2 = ? untested
---   3 = stretch (documented)          4 = ? untested
---   5 = full height (documented)      6 = ? untested
---   7 = ? untested
+-- SETTLED (run 4): IMGRESOURCEFLAGS 3 on a square 1024 canvas. Flag 3 is the
+-- only value that never repeats the image, and at this canvas size with these
+-- margins its stretching is not objectionable. Confirmed by the tester across
+-- all usable item sizes.
+--
+-- The sweep that established this is in git history. Add entries here to
+-- compare again: 1 = centre/tile, 5 = full height, 2/4/6/7 undocumented.
 local VARIANTS = {
-  { flag = 1 }, { flag = 2 }, { flag = 3 }, { flag = 4 },
-  { flag = 5 }, { flag = 6 }, { flag = 7 },
+  { flag = 3 },
 }
 
 local CONFIG = {
@@ -63,7 +55,7 @@ local CONFIG = {
   NOTE_TEXT      = "Cadd9",
   DRAW_TEXT      = true,
   TRANSPARENT_BG = false, -- let the item colour show through instead of white
-  LABEL_VARIANT  = true,
+  LABEL_VARIANT  = false, -- flag settled; images no longer need labelling
   FOLDER         = "chord-diagrams",
 }
 
@@ -114,7 +106,7 @@ end
 
 local SEP = package.config:sub(1, 1)
 
-say("Chord Diagram spike v0.4.0")
+say("Chord Diagram spike v0.5.0")
 say("REAPER %s   %s", reaper.GetAppVersion(), reaper.GetOS())
 say("Canvas %dx%d, stroke %dpx", CONFIG.SIZE, CONFIG.SIZE,
   math.floor(CONFIG.SIZE / CONFIG.STROKE))
@@ -143,7 +135,7 @@ end
 
 if #items == 0 then
   reaper.ShowMessageBox(
-    "Select at least one EMPTY item.\n\nSeven gives one per flag value.",
+    "Select an EMPTY item.\n\nInsert one with Insert > Empty item, then select it.",
     "No empty item selected", 0)
   return
 end
@@ -303,17 +295,10 @@ else
   say("%d step(s) FAILED — see above.", failures)
 end
 say("")
-say("Each image is labelled with its flag value in the bottom-left corner.")
+say("Settled configuration: IMGRESOURCEFLAGS 3 on a square %d canvas.", CONFIG.SIZE)
+say("Flag 3 never repeats the image, and at this size the stretching is mild.")
 say("")
-say("Flags 1, 3 and 5 are the documented ones and are already known:")
-say("  1 centre/tile — right proportions, but repeats on wide items")
-say("  3 stretch     — never repeats, but distorts")
-say("  5 full height — right proportions, but repeats")
-say("")
-say("Flags 2, 4, 6 and 7 are UNDOCUMENTED and are the point of this run.")
-say("Resize items wide, short, tall and narrow, and look for one that always")
-say("shows exactly ONE diagram, correctly proportioned and never repeated.")
-say("")
-say("If one of them does that, it is the setting we ship.")
+say("Sanity check: exactly one diagram per item, readable at the item sizes")
+say("you actually work at, and the chord name clear of the grid.")
 
 flush()

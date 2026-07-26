@@ -69,7 +69,29 @@ therefore be built to answer everything in **one** run:
 Consequently **risk 1 in the parent PRD is retired**: the plan holds as written, and no fallback
 renderer is required.
 
-Still open: which display flag frames the diagram correctly (**O2**), pending visual review.
+## Findings — runs 2 to 4: the display flag (O2 resolved)
+
+**Settled: `IMGRESOURCEFLAGS = 3` on a square 1024×1024 canvas.** Confirmed by the tester as good at
+all usable item sizes.
+
+Getting there took three runs, and the reasoning is worth keeping:
+
+- **Run 2** ruled out padding. Flag 1 kept proportions but tiled into repeats; flag 5 tiled and
+  cropped the title; flag 3 never repeated but distorted. Widening the canvas with white padding did
+  not stop the tiling.
+- **Run 3** found the more serious defect: **grid lines vanished at practical item sizes on every
+  variant.** This is a downscaling artefact, not a resolution shortfall — see D22 in the brief. Fixed
+  by making stroke weight proportional to canvas size.
+- **Run 4** swept the whole `IMGRESOURCEFLAGS` bitfield, including the undocumented values 2, 4, 6
+  and 7, since only 1, 3 and 5 are documented and the requirement was "fit, never repeat". With the
+  square power-of-two canvas and heavier strokes, **flag 3 became a clear winner** — it is the only
+  value that never repeats, and at 1024×1024 with generous internal margins its stretching is not
+  objectionable.
+
+Also fixed in run 4: extra clearance between the chord name and the diagram, which had been slightly
+crossing over.
+
+**Both open technical questions in this slice are now closed.** What remains is ReaPack delivery.
 
 ## Blocked by
 

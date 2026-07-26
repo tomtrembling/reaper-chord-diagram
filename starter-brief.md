@@ -19,6 +19,8 @@
 | **D7** | **6-string standard tuning only in v1**, string count parameterised in the data model. | given |
 | **D8** | **Personal / small-audience tool**, built ReaPack-ready from the start. | given |
 | **D9** | **Render path = a real PNG attached to the empty item** via `RESOURCEFN` + `IMGRESOURCEFLAGS` in the item state chunk. Images scale with the item automatically. This is the user's existing manual workflow, automated. | given |
+| **D21** | **`IMGRESOURCEFLAGS = 3`** (stretch), with a **square 1024×1024 power-of-two canvas**. Confirmed by the tester across all usable item sizes. Flag 3 is the only value that never repeats the image; the square canvas and generous internal margins keep its stretching unobjectionable. | 002 run 4 |
+| **D22** | **Stroke weight is proportional to canvas size** (`SIZE/64`), never a fixed pixel count. Thin lines vanish when REAPER scales a large image down to item height — a 2px line in a 520px canvas is a quarter of a pixel on an 80px item. **This reverses the earlier "render 2–3× and let REAPER scale down" guidance**: for line art, what matters is stroke weight relative to *displayed* size. | 002 run 3 |
 | **D10** | **Input = fretboard grid + text fast path**, synced bidirectionally. Typing `x32010` redraws the grid; clicking the grid rewrites the text. | Q1 |
 | **D11** | **One shared pure-Lua layout model, two thin backends.** `layout(voicing) → primitives` in normalised coordinates; an ImGui backend draws to screen, a LICE backend draws to PNG. Hit-testing reuses the same coordinates. | Q2 |
 | **D12** | **Barres are explicit — drawn by dragging across strings.** No inference. Not expressible in the text field. **Editing the text field preserves existing barres** (see §5). | Q3, Q4 |
