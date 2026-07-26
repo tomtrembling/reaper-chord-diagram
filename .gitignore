@@ -1,4 +1,40 @@
+# OS
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# Secrets / local config
 .env
-/node_modules/
+.env.*
 .claude/settings.local.json
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Lua toolchain
+lua_modules/
+.luarocks/
+*.rock
+*.src.rock
+
+# Test / lint output
+luacov.stats.out
+luacov.report.out
+.luals-log/
+*.log
+
+# REAPER scratch projects used for manual testing
+# (generated chord PNGs live in user projects, never in this repo)
+scratch/
+test-project/
+*.rpp-bak
+*.RPP-bak
+reaper-*.ini
+
+# Node (template leftover; this project is Lua)
+/node_modules/
+
+# NOTE: index.xml is the ReaPack repository index and MUST stay tracked —
+# ReaPack fetches it over HTTPS. Never add it here.
