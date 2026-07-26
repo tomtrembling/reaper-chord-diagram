@@ -1,61 +1,69 @@
 --[[
 @description Chord Diagram (spike)
-@version 0.1.0
+@version 0.2.0
 @author Tom Trembling
 @about
-  Tracer bullet for the chord diagram plugin. Renders a HARDCODED voicing to a
-  PNG and attaches it to the selected empty item(s).
+  Tracer bullet for the chord diagram plugin. Renders a HARDCODED voicing to
+  PNGs and attaches them to the selected empty items.
 
-  This is a spike, not the plugin. It exists to answer three questions in a
-  single run, because the developer has no REAPER install and every test is a
-  round trip to another machine:
+  RUN 1 established that LICE rendering, text and the state-chunk write all
+  work. It also showed that none of the three display flags is usable on its
+  own: flag 5 keeps proportions but tiles horizontally, flag 3 never tiles but
+  distorts the diagram badly on short or narrow items, and flag 1 tiles without
+  filling the item.
 
-    1. Can js_ReaScriptAPI's LICE functions produce an acceptable diagram?
-    2. Does text rendering work, and on Windows specifically?
-    3. Which IMGRESOURCEFLAGS value frames a portrait image correctly?
+  RUN 2 tests the fix. Tiling happens when the height-scaled image is narrower
+  than the item, so this pads the canvas with white either side. A wide image
+  scaled to item height should exceed the item's width, leaving nothing to tile
+  and pushing any cropping onto blank padding rather than the diagram.
+
+  Each variant writes its own settings into the corner of the image, so a
+  screenshot identifies itself.
 
   HOW TO USE
-    - Save the project first (the image path is relative to the project).
-    - Create one to three EMPTY items on a track and select them.
+    - Save the project first.
+    - Create SIX empty items on a track and select them all.
     - Run this action.
-    - Read the report in the console window that opens.
-
-  With three items selected, each gets a different display flag so they can be
-  compared side by side. Resize them taller and see which one looks right.
+    - Resize items: taller, shorter, narrower. Look for the variant that keeps
+      exactly one undistorted, legible diagram in every shape.
 @changelog
-  Initial spike.
+  0.2.0 Test padded canvases against the display flags.
+  0.1.0 Initial spike.
 --]]
 
 --------------------------------------------------------------------------------
 -- CONFIG — flip these and re-run; no new build needed.
 --------------------------------------------------------------------------------
 
-local CONFIG = {
-  -- Display flag applied to the 1st, 2nd, 3rd selected item respectively.
-  --   1 = centre/tile    3 = stretch image+text    5 = full-height image
-  FLAGS = { 5, 3, 1 },
-
-  -- Store the image path relative to the project (goal), or absolute (fallback
-  -- if the relative form does not resolve).
-  RELATIVE_PATH = true,
-
-  -- Item notes text. IMGRESOURCEFLAGS is documented as absent when notes are
-  -- empty, so this defaults to non-empty. Set to "" to see whether the image
-  -- still displays, and whether note text collides with the picture.
-  NOTE_TEXT = "Cadd9",
-
-  -- Draw the title text. Set false to isolate shape rendering if text fails.
-  DRAW_TEXT = true,
-
-  -- Canvas size in pixels.
-  WIDTH = 400,
-  HEIGHT = 520,
-
-  FOLDER = "chord-diagrams",
+-- Each variant is applied to the correspondingly-numbered selected item.
+--   flag = IMGRESOURCEFLAGS: 5 full-height, 3 stretch, 1 centre/tile
+--   pad  = canvas width as a multiple of the diagram width. 1.0 is run 1's
+--          behaviour; higher values add white padding either side.
+-- Run 1 verdict from the tester: flag 1 looked best. It is the only flag that
+-- never distorts the diagram — its sole failure is tiling into repeats when the
+-- item is wide relative to the image. Padding is the fix for exactly that, so
+-- run 2 sweeps padding against flag 1, keeping one of each alternative as a
+-- control.
+local VARIANTS = {
+  { flag = 1, pad = 1.0 },   -- what the tester saw and preferred
+  { flag = 1, pad = 2.0 },
+  { flag = 1, pad = 3.0 },
+  { flag = 1, pad = 4.0 },
+  { flag = 5, pad = 3.0 },   -- control: best of the proportion-preserving alt
+  { flag = 3, pad = 1.0 },   -- control: the distorting one, for comparison
 }
 
--- The hardcoded voicing: Cadd9 = x32030, strings low-E to high-E.
--- -1 = muted, 0 = open, n = fret.
+local CONFIG = {
+  RELATIVE_PATH = true,
+  NOTE_TEXT     = "Cadd9",
+  DRAW_TEXT     = true,
+  LABEL_VARIANT = true,   -- write "flag5 pad3.0" into the image corner
+  WIDTH         = 400,    -- diagram width; canvas is WIDTH * pad
+  HEIGHT        = 520,
+  FOLDER        = "chord-diagrams",
+}
+
+-- Cadd9 = x32030, low E to high E. -1 muted, 0 open, n fret.
 local VOICING = { -1, 3, 2, 0, 3, 0 }
 local CHORD_NAME = "Cadd9"
 
@@ -66,11 +74,9 @@ local CHORD_NAME = "Cadd9"
 local lines, failures = {}, 0
 
 local function say(fmt, ...)
-  local msg = select("#", ...) > 0 and string.format(fmt, ...) or fmt
-  lines[#lines + 1] = msg
+  lines[#lines + 1] = select("#", ...) > 0 and string.format(fmt, ...) or fmt
 end
 
---- Run one stage, capturing any error rather than aborting the whole script.
 local function stage(label, fn)
   local ok, result = pcall(fn)
   if not ok then
@@ -92,50 +98,42 @@ end
 
 local SEP = package.config:sub(1, 1)
 
-say("Chord Diagram spike")
+say("Chord Diagram spike v0.2.0")
 say("REAPER %s   %s", reaper.GetAppVersion(), reaper.GetOS())
 say("")
 
 if not reaper.APIExists("JS_LICE_CreateBitmap") then
   reaper.ShowMessageBox(
-    "js_ReaScriptAPI is not installed.\n\n" ..
-    "Install it via ReaPack (Extensions > ReaPack > Browse packages, " ..
-    "search for js_ReaScriptAPI), then restart REAPER.",
+    "js_ReaScriptAPI is not installed.\n\nInstall it via ReaPack, then restart REAPER.",
     "Missing dependency", 0)
   return
 end
-say("js_ReaScriptAPI present")
 
--- Project directory
 local _, projfn = reaper.EnumProjects(-1, "")
 if projfn == nil or projfn == "" then
-  reaper.ShowMessageBox(
-    "Save the project before running this.\n\n" ..
-    "The diagram is written into a folder next to the project file.",
-    "Project not saved", 0)
+  reaper.ShowMessageBox("Save the project before running this.", "Project not saved", 0)
   return
 end
 local projdir = projfn:match("^(.*)[/\\][^/\\]*$")
 say("Project dir: %s", projdir)
 
--- Selected items
 local items = {}
 for i = 0, reaper.CountSelectedMediaItems(0) - 1 do
   local item = reaper.GetSelectedMediaItem(0, i)
-  if reaper.CountTakes(item) == 0 then
-    items[#items + 1] = item
-  end
+  if reaper.CountTakes(item) == 0 then items[#items + 1] = item end
 end
 
 if #items == 0 then
   reaper.ShowMessageBox(
     "Select at least one EMPTY item.\n\n" ..
-    "Insert one with Insert > Empty item, then select it.\n" ..
-    "Select three to compare the display flags side by side.",
+    "Six gives one per variant — see the top of the script.",
     "No empty item selected", 0)
   return
 end
-say("Empty items selected: %d", #items)
+say("Empty items selected: %d  (variants defined: %d)", #items, #VARIANTS)
+if #items < #VARIANTS then
+  say("NOTE: only the first %d variants will be tested.", #items)
+end
 say("")
 
 --------------------------------------------------------------------------------
@@ -143,18 +141,7 @@ say("")
 --------------------------------------------------------------------------------
 
 local W, H = CONFIG.WIDTH, CONFIG.HEIGHT
-local WHITE, BLACK = 0xFFFFFFFF, 0xFF000000
-
--- Layout geometry. Kept crude on purpose — this is a spike; the real version
--- computes this in a pure Lua layout module shared with the on-screen grid.
-local marginX   = math.floor(W * 0.16)
-local topY      = math.floor(H * 0.30)
-local bottomY   = math.floor(H * 0.93)
-local gridW     = W - marginX * 2
-local stringGap = gridW / 5
-local fretGap   = (bottomY - topY) / 5
-local lineW     = math.max(2, math.floor(W / 160))
-local dotR      = math.floor(stringGap * 0.30)
+local WHITE, BLACK, GREY = 0xFFFFFFFF, 0xFF000000, 0xFF999999
 
 local function rect(bmp, x, y, w, h, colour)
   reaper.JS_LICE_FillRect(bmp, math.floor(x), math.floor(y),
@@ -166,116 +153,105 @@ local function disc(bmp, cx, cy, r, colour)
     math.floor(r), colour, 1.0, "COPY", true)
 end
 
-local function stringX(i) return marginX + (i - 1) * stringGap end
+--- Draw text, returning false if the font could not be made.
+local function text(bmp, str, size, weight, x1, y1, x2, y2, colour)
+  local gdi = reaper.JS_GDI_CreateFont(size, weight, 0, false, false, false, "Arial")
+  if not gdi then return false end
+  local font = reaper.JS_LICE_CreateFont()
+  if not font then return false end
+  reaper.JS_LICE_SetFontFromGDI(font, gdi, "")
+  pcall(reaper.JS_LICE_SetFontColor, font, colour or BLACK)
+  pcall(reaper.JS_LICE_SetFontBkColor, font, WHITE)
+  reaper.JS_LICE_DrawText(bmp, font, str, #str, x1, y1, x2, y2)
+  pcall(reaper.JS_LICE_DestroyFont, font)
+  pcall(reaper.JS_GDI_DeleteObject, gdi)
+  return true
+end
 
-local bmp = stage("create bitmap", function()
-  local b = reaper.JS_LICE_CreateBitmap(true, W, H)
-  if not b then error("JS_LICE_CreateBitmap returned nil") end
-  return b
-end)
-if not bmp then flush() return end
+--- Render one variant to a PNG. Returns the path relative to the project.
+local function render(variant)
+  local canvasW = math.floor(W * variant.pad)
+  local offX    = math.floor((canvasW - W) / 2)
 
-stage("clear canvas", function()
+  local marginX   = math.floor(W * 0.16)
+  local topY      = math.floor(H * 0.30)
+  local bottomY   = math.floor(H * 0.93)
+  local gridW     = W - marginX * 2
+  local stringGap = gridW / 5
+  local fretGap   = (bottomY - topY) / 5
+  local lineW     = math.max(2, math.floor(W / 160))
+  local dotR      = math.floor(stringGap * 0.30)
+  local function stringX(i) return offX + marginX + (i - 1) * stringGap end
+
+  local bmp = reaper.JS_LICE_CreateBitmap(true, canvasW, H)
+  if not bmp then error("JS_LICE_CreateBitmap returned nil") end
   reaper.JS_LICE_Clear(bmp, WHITE)
-end)
 
-stage("draw grid, dots and markers", function()
-  -- Nut: thicker bar at the top of the grid.
-  rect(bmp, marginX, topY - lineW * 2, gridW, lineW * 3, BLACK)
-
+  -- Nut
+  rect(bmp, offX + marginX, topY - lineW * 2, gridW, lineW * 3, BLACK)
   -- Frets
   for f = 1, 5 do
-    rect(bmp, marginX, topY + f * fretGap, gridW, lineW, BLACK)
+    rect(bmp, offX + marginX, topY + f * fretGap, gridW, lineW, BLACK)
   end
-
   -- Strings
   for s = 1, 6 do
     rect(bmp, stringX(s) - lineW / 2, topY, lineW, bottomY - topY, BLACK)
   end
 
-  -- Dots, and open/muted markers above the nut
+  -- Dots and open/muted markers
   local markY = topY - lineW * 6
   for s = 1, 6 do
-    local fret = VOICING[s]
-    local x = stringX(s)
+    local fret, x = VOICING[s], stringX(s)
     if fret == -1 then
-      -- 'x' drawn as two crossed bars
       local a = dotR * 0.8
       for d = -a, a, 0.5 do
         rect(bmp, x + d, markY + d, lineW, lineW, BLACK)
         rect(bmp, x + d, markY - d, lineW, lineW, BLACK)
       end
     elseif fret == 0 then
-      -- 'o' drawn as a filled disc with a white centre
       disc(bmp, x, markY, dotR * 0.75, BLACK)
       disc(bmp, x, markY, dotR * 0.75 - lineW, WHITE)
     else
       disc(bmp, x, topY + (fret - 0.5) * fretGap, dotR, BLACK)
     end
   end
-end)
 
--- Text is isolated: if it fails, the shapes above are still written to disk and
--- the report says which half worked.
-if CONFIG.DRAW_TEXT then
-  stage("draw title text", function()
-    local gdi = reaper.JS_GDI_CreateFont(math.floor(H * 0.10), 700, 0,
-      false, false, false, "Arial")
-    if not gdi then error("JS_GDI_CreateFont returned nil") end
-    local font = reaper.JS_LICE_CreateFont()
-    if not font then error("JS_LICE_CreateFont returned nil") end
-    reaper.JS_LICE_SetFontFromGDI(font, gdi, "")
-    pcall(reaper.JS_LICE_SetFontColor, font, BLACK)
-    pcall(reaper.JS_LICE_SetFontBkColor, font, WHITE)
-    reaper.JS_LICE_DrawText(bmp, font, CHORD_NAME, #CHORD_NAME,
-      0, math.floor(H * 0.10), W, math.floor(H * 0.26))
-    pcall(reaper.JS_LICE_DestroyFont, font)
-    pcall(reaper.JS_GDI_DeleteObject, gdi)
-  end)
-else
-  say("  --     title text skipped (DRAW_TEXT = false)")
+  if CONFIG.DRAW_TEXT then
+    text(bmp, CHORD_NAME, math.floor(H * 0.10), 700,
+      offX, math.floor(H * 0.10), offX + W, math.floor(H * 0.26))
+  end
+
+  local label = string.format("flag%d pad%.1f", variant.flag, variant.pad)
+  if CONFIG.LABEL_VARIANT then
+    -- Bottom-left of the whole canvas, so it survives cropping of the padding.
+    text(bmp, label, math.floor(H * 0.05), 400,
+      8, H - math.floor(H * 0.07), canvasW, H, GREY)
+  end
+
+  local rel = CONFIG.FOLDER .. SEP .. "spike-" .. label:gsub("[ .]", "") .. ".png"
+  local abs = projdir .. SEP .. rel
+  local ok = reaper.JS_LICE_WritePNG(abs, bmp, false)
+  pcall(reaper.JS_LICE_DestroyBitmap, bmp)
+  if ok == false then error("JS_LICE_WritePNG returned false") end
+  if not reaper.file_exists(abs) then error("PNG not found after write: " .. abs) end
+
+  return rel, abs, canvasW
 end
-
---------------------------------------------------------------------------------
--- Write PNG
---------------------------------------------------------------------------------
-
-local relPath = CONFIG.FOLDER .. SEP .. "spike-" .. CHORD_NAME .. ".png"
-local absPath = projdir .. SEP .. relPath
 
 stage("create image folder", function()
   reaper.RecursiveCreateDirectory(projdir .. SEP .. CONFIG.FOLDER, 0)
 end)
 
-stage("write PNG", function()
-  local ok = reaper.JS_LICE_WritePNG(absPath, bmp, false)
-  if ok == false then error("JS_LICE_WritePNG returned false") end
-end)
-
-pcall(reaper.JS_LICE_DestroyBitmap, bmp)
-
-local exists = reaper.file_exists(absPath)
-say("  %s  file on disk: %s", exists and "ok    " or "FAIL  ", absPath)
-if not exists then failures = failures + 1 end
-say("")
-
 --------------------------------------------------------------------------------
--- Attach to items via the state chunk
+-- Attach
 --------------------------------------------------------------------------------
 
-local storedPath = CONFIG.RELATIVE_PATH and relPath or absPath
-
---- Insert the image reference into an item state chunk.
---- Existing notes and image lines are stripped first so re-running is idempotent.
 local function withImage(chunk, filename, flags, note)
   chunk = chunk:gsub("\nRESOURCEFN [^\n]*", "")
   chunk = chunk:gsub("\nIMGRESOURCEFLAGS [^\n]*", "")
   chunk = chunk:gsub("\n<NOTES.-\n>", "")
-
   local block = string.format('\n<NOTES\n|%s\n>\nRESOURCEFN "%s"\nIMGRESOURCEFLAGS %d',
     note, filename, flags)
-
-  -- Insert immediately before the chunk's closing '>'.
   local replaced, n = chunk:gsub("\n>%s*$", block .. "\n>\n")
   if n == 0 then error("could not find the end of the item chunk") end
   return replaced
@@ -284,15 +260,20 @@ end
 reaper.Undo_BeginBlock()
 
 for i, item in ipairs(items) do
-  local flags = CONFIG.FLAGS[i] or CONFIG.FLAGS[#CONFIG.FLAGS]
-  stage(string.format("item %d: attach image with IMGRESOURCEFLAGS %d", i, flags), function()
-    local ok, chunk = reaper.GetItemStateChunk(item, "", false)
-    if not ok then error("GetItemStateChunk failed") end
-    local updated = withImage(chunk, storedPath, flags, CONFIG.NOTE_TEXT)
-    if not reaper.SetItemStateChunk(item, updated, false) then
-      error("SetItemStateChunk failed")
-    end
-  end)
+  local variant = VARIANTS[i]
+  if variant then
+    stage(string.format("item %d: flag %d, pad %.1f (canvas %d x %d)",
+      i, variant.flag, variant.pad, math.floor(W * variant.pad), H), function()
+      local rel = render(variant)
+      local stored = CONFIG.RELATIVE_PATH and rel or (projdir .. SEP .. rel)
+      local ok, chunk = reaper.GetItemStateChunk(item, "", false)
+      if not ok then error("GetItemStateChunk failed") end
+      if not reaper.SetItemStateChunk(item,
+        withImage(chunk, stored, variant.flag, CONFIG.NOTE_TEXT), false) then
+        error("SetItemStateChunk failed")
+      end
+    end)
+  end
 end
 
 reaper.Undo_EndBlock("Chord diagram spike", -1)
@@ -303,23 +284,19 @@ reaper.UpdateArrange()
 --------------------------------------------------------------------------------
 
 say("")
-say("Stored image path: %s", storedPath)
-say("  (%s — flip CONFIG.RELATIVE_PATH to try the other form)",
-  CONFIG.RELATIVE_PATH and "relative to project" or "absolute")
-say("")
 if failures == 0 then
   say("All steps completed.")
 else
   say("%d step(s) FAILED — see above.", failures)
 end
 say("")
-say("Now look at the arrange view:")
-say("  1. Does a chord diagram appear inside each item?")
-say("  2. Drag an item taller — does the image scale, and stay undistorted?")
-for i = 1, math.min(#items, #CONFIG.FLAGS) do
-  say("     item %d uses IMGRESOURCEFLAGS %d", i, CONFIG.FLAGS[i])
-end
-say("  3. Is the title text there, and is it legible?")
-say("  4. Is the diagram readable at a normal item height?")
+say("Each image is labelled in its bottom-left corner with its own settings.")
+say("")
+say("What to look for — resize items taller, shorter and narrower:")
+say("  * exactly ONE diagram per item (no repeats)")
+say("  * the grid stays square-ish (not squashed or stretched)")
+say("  * the title stays fully visible (not cropped)")
+say("")
+say("The winner is the variant that holds all three at every item shape.")
 
 flush()
