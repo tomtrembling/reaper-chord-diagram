@@ -15,3 +15,9 @@ files["src/adapter"] = {
 files["spec"] = {
   std = "lua54+busted",
 }
+
+-- Spike scripts at the repo root are REAPER entry points, so they get the same
+-- allowance as the adapter. They are throwaway by design; see issue 002.
+files["chord_diagram_spike.lua"] = {
+  read_globals = { "reaper" },
+}

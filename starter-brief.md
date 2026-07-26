@@ -53,13 +53,17 @@ diagram living in the project so it travels with it.
 
 ## 3. Who it's for
 
-- **Developer: macOS.** Can only smoke-test on a Mac.
-- **Primary user / tester: Windows.** Receives builds via ReaPack during development and is the real
-  validator. **All acceptance testing happens on Windows.** They already do this workflow manually,
-  so the target behaviour is known rather than guessed.
+- **Developer: macOS, with no REAPER installed.** Cannot run the plugin at all — not even to smoke
+  test. All development is blind.
+- **Primary user / tester: Windows.** Receives builds via ReaPack and is the *only* validator. They
+  already do this workflow manually, so the target behaviour is known rather than guessed.
 
-The developer cannot dogfood. That makes the delivery loop (D17) part of the critical path, not
-polish — see §9.
+**Every REAPER-touching change round-trips through another person on another machine.** That makes
+the delivery loop (D17) the critical path, and it changes how code should be written: each build
+must answer every open question in one run. Concretely — scripts self-report what worked and what
+failed to the console; uncertain choices are exposed as switches at the top of the file so the
+tester can try variants without waiting for a new build; and anything visual renders its
+alternatives side by side rather than one per round trip.
 
 ## 4. User flow
 

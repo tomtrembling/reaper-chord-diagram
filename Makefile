@@ -7,15 +7,22 @@
 BIN   := .luarocks/bin
 LUA54 := $(shell brew --prefix lua@5.4 2>/dev/null)
 
-.PHONY: verify test lint check install-deps clean
+.PHONY: verify syntax test lint check install-deps clean
 
-verify: test lint check
+verify: syntax test lint check
+
+# REAPER is not installed on the dev machine, so adapter code can never be run
+# here. Parsing every file under the target interpreter is the last check that
+# happens before a build goes to the tester.
+syntax:
+	@find . -name '*.lua' -not -path './.luarocks/*' -print0 | xargs -0 $(LUA54)/bin/luac5.4 -p
+	@echo "Syntax OK"
 
 test:
 	@$(BIN)/busted
 
 lint:
-	@$(BIN)/luacheck src spec
+	@$(BIN)/luacheck src spec chord_diagram_spike.lua
 
 check:
 	@rm -rf .luals-log
