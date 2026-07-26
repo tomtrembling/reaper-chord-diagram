@@ -72,6 +72,10 @@ local CONFIG = {
   RELATIVE_PATH = true,
   NOTE_TEXT     = "Cadd9",
   DRAW_TEXT     = true,
+  -- Transparent background instead of white, so the item's own colour shows
+  -- through rather than the diagram sitting in a white box. The reference
+  -- images from the manual workflow appear to be transparent PNGs.
+  TRANSPARENT_BG = false,
   LABEL_VARIANT = true,   -- write "f1 h520 s60" into the image corner
   WIDTH         = 400,    -- base ratio only; variant.h drives actual size
   HEIGHT        = 520,
@@ -155,7 +159,7 @@ say("")
 -- Render
 --------------------------------------------------------------------------------
 
-local WHITE, BLACK = 0xFFFFFFFF, 0xFF000000
+local WHITE, BLACK, CLEAR = 0xFFFFFFFF, 0xFF000000, 0x00000000
 
 local function rect(bmp, x, y, w, h, colour)
   reaper.JS_LICE_FillRect(bmp, math.floor(x), math.floor(y),
@@ -175,7 +179,7 @@ local function text(bmp, str, size, weight, x1, y1, x2, y2, colour)
   if not font then return false end
   reaper.JS_LICE_SetFontFromGDI(font, gdi, "")
   pcall(reaper.JS_LICE_SetFontColor, font, colour or BLACK)
-  pcall(reaper.JS_LICE_SetFontBkColor, font, WHITE)
+  pcall(reaper.JS_LICE_SetFontBkColor, font, CONFIG.TRANSPARENT_BG and CLEAR or WHITE)
   reaper.JS_LICE_DrawText(bmp, font, str, #str, x1, y1, x2, y2)
   pcall(reaper.JS_LICE_DestroyFont, font)
   pcall(reaper.JS_GDI_DeleteObject, gdi)
@@ -204,7 +208,7 @@ local function render(variant)
 
   local bmp = reaper.JS_LICE_CreateBitmap(true, canvasW, H)
   if not bmp then error("JS_LICE_CreateBitmap returned nil") end
-  reaper.JS_LICE_Clear(bmp, WHITE)
+  reaper.JS_LICE_Clear(bmp, CONFIG.TRANSPARENT_BG and CLEAR or WHITE)
 
   -- Nut
   rect(bmp, offX + marginX, topY - lineW * 2, gridW, lineW * 3, BLACK)
@@ -250,7 +254,7 @@ local function render(variant)
 
   local rel = CONFIG.FOLDER .. SEP .. "spike-" .. label:gsub("[ .]", "") .. ".png"
   local abs = projdir .. SEP .. rel
-  local ok = reaper.JS_LICE_WritePNG(abs, bmp, false)
+  local ok = reaper.JS_LICE_WritePNG(abs, bmp, CONFIG.TRANSPARENT_BG and true or false)
   pcall(reaper.JS_LICE_DestroyBitmap, bmp)
   if ok == false then error("JS_LICE_WritePNG returned false") end
   if not reaper.file_exists(abs) then error("PNG not found after write: " .. abs) end
