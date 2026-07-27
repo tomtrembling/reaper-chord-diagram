@@ -11,7 +11,7 @@ local M = {}
 --- asserted by `spec/header_version_spec.lua`, so bumping one and forgetting
 --- the other fails `make test` rather than shipping a diagnostic report that
 --- names the wrong version.
-M.CURRENT = "0.14.0"
+M.CURRENT = "0.15.0"
 
 --- The ReaImGui API version the window is written against.
 ---

@@ -1,6 +1,6 @@
 --[[
 @description Chord Diagram
-@version 0.14.0
+@version 0.15.0
 @author Tom Trembling
 @provides
   [main] chord_diagram_diagnostics.lua
@@ -56,6 +56,10 @@
 
   Requires REAPER 6.44 or newer, js_ReaScriptAPI and ReaImGui 0.9 or newer.
 @changelog
+  0.15.0 Lines in the exported PNG are drawn exactly as long as the layout asks
+        for, rather than a half-stroke longer at each end. The nut and the
+        muted-string crosses were the visible cases. The on-screen grid is
+        unchanged; this brings the image into line with it.
   0.14.0 Packaging fix: installing the plugin now installs the modules the
         actions are built from, so a fresh install runs. Every earlier release
         shipped the action scripts alone and failed on their first `require`.
