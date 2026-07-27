@@ -56,16 +56,28 @@ index:
 # still exits 0. So the index is checked rather than trusted: a build that
 # installs no actions, or actions with no modules to require, must not reach
 # the tester looking like a success.
+#
+# Only the NEWEST version block is checked. Every past version is in the file
+# too, and counting across all of them would pass on the strength of history
+# while the release being shipped was empty.
 index-check:
-	@actions=$$(grep -c 'main="main"' index.xml); \
-	 modules=$$(grep -c 'file="src/' index.xml); \
-	 if [ "$$actions" -lt 3 ] || [ "$$modules" -lt 1 ]; then \
-	   echo "index.xml FAILED: $$actions action sources (want 3),"; \
-	   echo "  $$modules module sources (want the whole src/ tree)."; \
+	@block=$$(awk '/<version name=/ { buf = "" } \
+	                              { buf = buf $$0 "\n" } \
+	               /<\/version>/   { last = buf } \
+	               END             { printf "%s", last }' index.xml); \
+	 version=$$(printf '%s' "$$block" | sed -n 's/.*<version name="\([^"]*\)".*/\1/p'); \
+	 actions=$$(printf '%s\n' "$$block" | grep -c 'main="main"' || true); \
+	 modules=$$(printf '%s\n' "$$block" | grep -c 'file="src/' || true); \
+	 if [ "$$actions" -ne 3 ] || [ "$$modules" -lt 2 ]; then \
+	   echo "index.xml FAILED at version $$version:"; \
+	   echo "  $$actions sources marked as actions (want exactly 3)"; \
+	   echo "  $$modules module sources (want the whole src/ tree)"; \
 	   echo "  Look for a 'conflicts with' or 'file not found' warning above."; \
+	   echo "  If the version is unchanged, that is the bug: reapack-index"; \
+	   echo "  never rewrites a version already in the index."; \
 	   exit 1; \
 	 fi; \
-	 echo "index.xml OK — $$actions actions, $$modules modules"
+	 echo "index.xml OK — version $$version, $$actions actions, $$modules modules"
 
 install-deps:
 	luarocks --lua-version=5.4 --lua-dir=$(LUA54) --tree .luarocks install busted
