@@ -17,6 +17,36 @@ local function centreX(p)
   return p.cx or (p.x1 + p.x2) / 2
 end
 
+--- Every horizontal line closing a fret cell, top of the window first. The top
+--- one is the nut or a fret depending on the framing, which is exactly what
+--- these tests must not have to care about.
+local function fretLines(computed)
+  local lines = {}
+  for _, role in ipairs({ "nut", "fret" }) do
+    for _, p in ipairs(withRole(computed, role)) do
+      lines[#lines + 1] = p
+    end
+  end
+  table.sort(lines, function(a, b) return a.y1 < b.y1 end)
+  return lines
+end
+
+--- The dot drawn on a given string, if there is one.
+local function dotOn(computed, index)
+  local string = withRole(computed, "string")[index]
+  for _, d in ipairs(withRole(computed, "dot")) do
+    if math.abs(d.cx - string.x1) < 1e-9 then return d end
+  end
+end
+
+--- Which cell of the window a dot sits in, counting 1 from the top.
+local function cellOf(computed, dot)
+  local lines = fretLines(computed)
+  for cell = 1, #lines - 1 do
+    if dot.cy > lines[cell].y1 and dot.cy < lines[cell + 1].y1 then return cell end
+  end
+end
+
 --- The set of string positions carrying a marker of the given role.
 local function markedStrings(computed, role)
   local strings = withRole(computed, "string")
@@ -31,9 +61,15 @@ end
 
 describe("layout", function()
   local C = assert(voicing.parse("x32010", "C"))
+  --- A Bm barre shape framed from the seventh fret: no nut in view.
+  local Bm = assert(voicing.parse("x79987", "Bm"))
 
   it("draws a nut for an open-position chord", function()
     assert.are.equal(1, #withRole(layout.compute(C, 1024, 1024), "nut"))
+  end)
+
+  it("draws no nut when the window starts above it", function()
+    assert.are.equal(0, #withRole(layout.compute(Bm, 1024, 1024), "nut"))
   end)
 
   it("draws one line per string and one per fret of the span", function()
@@ -57,35 +93,59 @@ describe("layout", function()
   end)
 
   it("places a dot on its own string, between the fret lines that bracket it", function()
+    -- The A string of a C is fretted at the third fret, and the nut is in view,
+    -- so the dot belongs in the third cell.
     local computed = layout.compute(C, 1024, 1024)
-    local strings = withRole(computed, "string")
-    local frets = withRole(computed, "fret")
-    local dots = withRole(computed, "dot")
-
-    -- The A string is fretted at the third fret.
-    local dot
-    for _, d in ipairs(dots) do
-      if math.abs(d.cx - strings[2].x1) < 1e-9 then dot = d end
-    end
+    local dot = dotOn(computed, 2)
     assert.is_table(dot)
-    assert.is_true(dot.cy > frets[2].y1)
-    assert.is_true(dot.cy < frets[3].y1)
+    assert.are.equal(3, cellOf(computed, dot))
   end)
 
   it("places a dot relative to the top of the window, not the nut", function()
-    -- Framed from the seventh fret, so the ninth fret is the third cell down.
-    local high = assert(voicing.parse("x79987", "B"))
-    local computed = layout.compute(high, 1024, 1024)
-    local frets = withRole(computed, "fret")
-    local strings = withRole(computed, "string")
-
-    local dot
-    for _, d in ipairs(withRole(computed, "dot")) do
-      if math.abs(d.cx - strings[3].x1) < 1e-9 then dot = d end
-    end
+    -- Framed from the seventh fret, so the ninth fret is the third cell down —
+    -- the same cell the third fret of a C occupies, which is the whole point.
+    local computed = layout.compute(Bm, 1024, 1024)
+    local dot = dotOn(computed, 3)
     assert.is_table(dot)
-    assert.is_true(dot.cy > frets[2].y1)
-    assert.is_true(dot.cy < frets[3].y1)
+    assert.are.equal(3, cellOf(computed, dot))
+  end)
+
+  it("puts every dot of a high voicing in the cell its fret number names", function()
+    local computed = layout.compute(Bm, 1024, 1024)
+    -- x79987, framed from the seventh: cells 1, 3, 3, 2, 1 on strings 2 to 6.
+    for index, cell in pairs({ [2] = 1, [3] = 3, [4] = 3, [5] = 2, [6] = 1 }) do
+      local dot = dotOn(computed, index)
+      assert.is_table(dot)
+      assert.are.equal(cell, cellOf(computed, dot), "string " .. index)
+    end
+  end)
+
+  it("labels a window that starts above the nut with the fret it starts at", function()
+    local marker = withRole(layout.compute(Bm, 1024, 1024), "position")
+    assert.are.equal(1, #marker)
+    assert.are.equal("7fr", marker[1].text)
+  end)
+
+  it("states the fret number for a window in the double figures", function()
+    local high = assert(voicing.parse("12-14-14-13-12-12", "E"))
+    assert.are.equal("12fr", withRole(layout.compute(high, 1024, 1024), "position")[1].text)
+  end)
+
+  it("draws no position marker when the nut is in view, because the nut says it", function()
+    assert.are.equal(0, #withRole(layout.compute(C, 1024, 1024), "position"))
+  end)
+
+  it("puts the marker beside the first cell of the window, clear of the grid", function()
+    local computed = layout.compute(Bm, 1024, 1024)
+    local marker = withRole(computed, "position")[1]
+    local lines = fretLines(computed)
+    local leftmostString = withRole(computed, "string")[1]
+
+    assert.is_true(marker.x + marker.w <= leftmostString.x1)
+
+    local middle = marker.y + marker.h / 2
+    assert.is_true(middle > lines[1].y1)
+    assert.is_true(middle < lines[2].y1)
   end)
 
   it("marks the open and muted strings, and only those", function()
@@ -103,6 +163,17 @@ describe("layout", function()
         assert.is_true(bottom < nutY)
       end
     end
+  end)
+
+  it("still marks a string that rings open under a window above the nut", function()
+    -- An open A string beneath a shape at the seventh fret. The ring goes above
+    -- the top of the window, where a songbook puts it.
+    local computed = layout.compute(assert(voicing.parse("x-0-9-9-7-x", "A")), 1024, 1024)
+    assert.are.same({ [2] = true }, markedStrings(computed, "open"))
+
+    local topOfWindow = fretLines(computed)[1].y1
+    local ring = withRole(computed, "open")[1]
+    assert.is_true(ring.cy + ring.r < topOfWindow)
   end)
 
   it("renders the chord name as a title, clear of the markers below it", function()
@@ -124,14 +195,41 @@ describe("layout", function()
     assert.are.equal(0, #withRole(layout.compute(unnamed, 1024, 1024), "title"))
   end)
 
+  it("draws only what the window can hold when a shape is wider than the span", function()
+    -- The span is fixed at five, so a shape reaching from the first fret to the
+    -- twelfth cannot be shown whole by any framing. It shows what it can rather
+    -- than painting a dot off the edge of the diagram.
+    local stretched = voicing.new({ frets = { 1, -1, -1, -1, -1, 12 } })
+    local computed = layout.compute(stretched, 1024, 1024)
+    assert.are.equal(1, #withRole(computed, "dot"))
+    for _, p in ipairs(computed.primitives) do
+      if p.cy then assert.is_true(p.cy >= 0 and p.cy <= 1) end
+    end
+  end)
+
+  it("keeps the window five frets deep however the chord is framed", function()
+    for _, v in ipairs({ C, Bm }) do
+      local computed = layout.compute(v, 1024, 1024)
+      local lines = fretLines(computed)
+      assert.are.equal(voicing.SPAN + 1, #lines)
+
+      local gap = lines[2].y1 - lines[1].y1
+      for i = 2, #lines do
+        assert.is_true(math.abs((lines[i].y1 - lines[i - 1].y1) - gap) < 1e-9)
+      end
+    end
+  end)
+
   it("emits only backend-neutral primitives, in normalised coordinates", function()
     local kinds = { line = true, rect = true, circle = true, text = true }
-    for _, p in ipairs(layout.compute(C, 1024, 1024).primitives) do
-      assert.is_true(kinds[p.kind], "unknown primitive kind: " .. tostring(p.kind))
-      for _, field in ipairs({ "x", "y", "x1", "y1", "x2", "y2", "cx", "cy" }) do
-        if p[field] then
-          assert.is_true(p[field] >= 0 and p[field] <= 1,
-            string.format("%s.%s = %s is outside the unit square", p.role, field, p[field]))
+    for _, v in ipairs({ C, Bm }) do
+      for _, p in ipairs(layout.compute(v, 1024, 1024).primitives) do
+        assert.is_true(kinds[p.kind], "unknown primitive kind: " .. tostring(p.kind))
+        for _, field in ipairs({ "x", "y", "x1", "y1", "x2", "y2", "cx", "cy" }) do
+          if p[field] then
+            assert.is_true(p[field] >= 0 and p[field] <= 1,
+              string.format("%s.%s = %s is outside the unit square", p.role, field, p[field]))
+          end
         end
       end
     end
@@ -155,6 +253,18 @@ describe("layout", function()
           assert.are.equal(s, hitString)
           assert.are.equal(fret, hitFret)
         end
+      end
+    end)
+
+    it("reports absolute frets when the window starts above the nut", function()
+      -- The window shows frets 7 to 11, so the cells map to those numbers and
+      -- not to 1 to 5. A click has to mean the fret the user can see.
+      local computed = layout.compute(Bm, 800, 600)
+      for _, index in ipairs({ 2, 3, 4, 5, 6 }) do
+        local dot = dotOn(computed, index)
+        local hitString, hitFret = layout.cellAt(computed, dot.cx * 800, dot.cy * 600)
+        assert.are.equal(index, hitString)
+        assert.are.equal(Bm.frets[index], hitFret)
       end
     end)
 

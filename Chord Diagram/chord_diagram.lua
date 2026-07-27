@@ -1,6 +1,6 @@
 --[[
 @description Chord Diagram
-@version 0.7.1
+@version 0.8.0
 @author Tom Trembling
 @about
   Capture a guitar chord voicing and pin its diagram to a point in the timeline,
@@ -16,12 +16,18 @@
     - Save the project first; the image is stored beside it.
     - Insert an empty item on a track and select exactly one.
     - Run this action, type the chord and a name, and press OK.
+    - For a chord at the tenth fret or above, separate the positions:
+      10-12-12-11-10-10. The diagram frames itself from the lowest fretted fret
+      and says which one it is.
     - Run it again on the same item to edit the chord: the voicing is stored on
       the item, so it comes back already filled in, and copying the item copies
       the chord with it.
 
   Requires js_ReaScriptAPI.
 @changelog
+  0.8.0 High-position chords: the separated form 10-12-12-11-10-10, and a
+        diagram that frames itself from the lowest fretted fret with a marker
+        saying which fret that is.
   0.7.1 Chords are stored in the item's extended state, which REAPER saves with
         the project, rather than on a custom line in the item state chunk.
   0.7.0 Chords are stored on the item and reloaded for editing; renaming a
@@ -146,7 +152,11 @@ end
 -- Input
 --------------------------------------------------------------------------------
 
-local answers = dialog.prompt(TITLE, { "Chord (e.g. x32010)", "Name" }, {
+-- The label carries both notations because this dialog has nowhere else to put
+-- help, and a guitarist typing a chord at the twelfth fret needs to be told the
+-- separated form exists. It must contain no comma: `dialog.prompt` joins the
+-- labels with commas, so one inside a label would invent a field.
+local answers = dialog.prompt(TITLE, { "Chord (e.g. x32010 or 10-12-12-11-10-10)", "Name" }, {
   existing and voicingOf.toText(existing) or "",
   existing and existing.name or "",
 })
@@ -161,7 +171,9 @@ local chordText, name = answers[1], answers[2]
 local v, parseError = voicingOf.parse(chordText, name, existing)
 if not v then
   return refuse(parseError .. "\n\nWrite one position per string, low E to high "
-    .. "E: x for muted, 0 for open, or the fret number. For example x32010.")
+    .. "E: x for muted, 0 for open, or the fret number. For example x32010.\n\n"
+    .. "At the tenth fret and above, separate the positions with hyphens so "
+    .. "each one is unambiguous: 10-12-12-11-10-10.")
 end
 
 -- The name is drawn on the diagram and is what identifies the item in REAPER,

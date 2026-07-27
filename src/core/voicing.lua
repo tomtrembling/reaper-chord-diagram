@@ -29,17 +29,41 @@ M.OPEN = 0
 --- rather than a rewrite; only six strings are built in v1.
 M.STRINGS = 6
 
+--- What counts as a separator between positions in the separated form.
+---
+--- Guitarists write high voicings as `10-12-12-11-10-10`, so the hyphen is the
+--- one this module EMITS. Spaces and commas are also accepted because they cost
+--- nothing to allow and are what people type. None of them can occur in the
+--- compact form, whose alphabet is digits and `x`, so a string containing any of
+--- them is unambiguously the separated form.
+local SEPARATORS = "%s,%-"
+
 --- Split a chord string into one token per string.
 ---
---- The compact form gives one character per string, which is unambiguous only
---- up to the ninth fret. The separated form for higher positions is added in
---- slice 004 and lands here.
+--- Two notations, told apart by whether the text contains a separator at all:
+--- the compact form gives one character per string, which is unambiguous only up
+--- to the ninth fret, and the separated form gives one token per string for
+--- anything higher. Surrounding whitespace is trimmed before the test, so a
+--- padded compact string is still read as compact.
+---
+--- Runs of separators collapse and leading and trailing ones are ignored, so a
+--- half-typed `10-12-` yields the two positions typed so far rather than an
+--- empty one. Nothing here rejects anything: a token count that does not match
+--- the instrument, or a token that is not a position, is the caller's error to
+--- report.
 --- @param text string
 --- @return string[]
 local function tokenise(text)
   local tokens = {}
-  for c in text:gmatch("%S") do
-    tokens[#tokens + 1] = c
+  local trimmed = text:match("^%s*(.-)%s*$") or ""
+  if trimmed:find("[" .. SEPARATORS .. "]") then
+    for token in trimmed:gmatch("[^" .. SEPARATORS .. "]+") do
+      tokens[#tokens + 1] = token
+    end
+  else
+    for c in trimmed:gmatch(".") do
+      tokens[#tokens + 1] = c
+    end
   end
   return tokens
 end
@@ -97,7 +121,8 @@ function M.parse(text, name, from)
     frets = frets,
     fingers = from.fingers,
     barres = from.barres,
-    baseFret = from.baseFret,
+    -- Carried across only while it still frames the chord. See `M.baseFret`.
+    baseFret = M.canFrame(frets, from.baseFret) and from.baseFret or nil,
     name = name,
   })
 end
@@ -128,16 +153,46 @@ end
 --- The number of frets the diagram shows at once. Settled at five.
 M.SPAN = 5
 
+--- Can a window starting at `base` show every fretted note of this shape?
+---
+--- The window is `M.SPAN` frets deep and the span never widens, so a shape can
+--- sit outside the window a base fret would open. That is the test for whether
+--- an override is still worth honouring, and it is public because the override
+--- control in the UI needs the same answer before it offers a value.
+--- @param frets integer[]
+--- @param base integer|nil
+--- @return boolean
+function M.canFrame(frets, base)
+  if not base then
+    return false
+  end
+  for _, fret in ipairs(frets) do
+    if fret > M.OPEN and (fret < base or fret > base + M.SPAN - 1) then
+      return false
+    end
+  end
+  return true
+end
+
 --- The fret the top of the diagram sits at: 1 means the nut is drawn.
 ---
 --- Derived, not stored, unless the caller has overridden it. The nut is shown
 --- whenever the whole shape fits inside the span starting at the nut; anything
---- higher gets a window starting at its lowest fretted fret. The position
---- marker that names that fret is added in slice 004.
+--- higher gets a window starting at its lowest fretted fret, which the layout
+--- labels with a position marker.
+---
+--- An open string does not force the nut into view. A shape that reaches past
+--- the fifth fret cannot show both, and the fretted notes are the ones that
+--- have to be drawn; the open string keeps its ring above the diagram, which is
+--- how songbooks notate a high chord with an open string in it.
+---
+--- AN OVERRIDE IS HONOURED ONLY WHILE IT FRAMES THE CHORD. One that no longer
+--- does is ignored rather than obeyed: obeying it would put the dots outside
+--- the grid, which is not a framing the user could have meant.
 --- @param v Voicing
 --- @return integer
 function M.baseFret(v)
-  if v.baseFret then
+  if M.canFrame(v.frets, v.baseFret) then
     return v.baseFret
   end
   local highest, lowest = 0, math.maxinteger
@@ -154,16 +209,29 @@ function M.baseFret(v)
   return lowest
 end
 
+--- The lowest fret that cannot be written as a single character.
+local TWO_DIGIT = 10
+
+--- The separator the separated form is written with. One of several accepted on
+--- input; the only one produced on output.
+M.SEPARATOR = "-"
+
 --- Format a voicing back to a chord string.
+---
+--- The separated form appears exactly when it has to: one position at or above
+--- the tenth fret makes every position in that chord ambiguous, so the whole
+--- string switches rather than mixing notations. Below that the compact form is
+--- what guitarists read, so it stays the default.
 --- @param v Voicing
 --- @return string
 function M.toText(v)
-  local out = {}
+  local out, separated = {}, false
   for i = 1, v.strings do
     local fret = v.frets[i]
     out[i] = fret == M.MUTED and "x" or tostring(fret)
+    separated = separated or fret >= TWO_DIGIT
   end
-  return table.concat(out)
+  return table.concat(out, separated and M.SEPARATOR or "")
 end
 
 --- A voicing's barres as `fret:from-to` tokens, in the order they were added.

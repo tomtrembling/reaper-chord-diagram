@@ -22,6 +22,35 @@ describe("voicing", function()
     end)
   end)
 
+  describe("parsing the separated form", function()
+    it("reads frets at and above the tenth, which the compact form cannot say", function()
+      local v = assert(voicing.parse("10-12-12-11-10-10"))
+      assert.are.same({ 10, 12, 12, 11, 10, 10 }, v.frets)
+    end)
+
+    it("round-trips back to the string it was parsed from", function()
+      assert.are.equal("10-12-12-11-10-10",
+        voicing.toText(assert(voicing.parse("10-12-12-11-10-10"))))
+    end)
+
+    it("reads muted and open strings alongside two-digit frets", function()
+      -- A D barre shape at the tenth fret, with both outer strings muted.
+      local v = assert(voicing.parse("x-x-12-14-15-14"))
+      assert.are.same({ -1, -1, 12, 14, 15, 14 }, v.frets)
+      assert.are.equal("x-x-12-14-15-14", voicing.toText(v))
+    end)
+
+    it("accepts spaces or commas where a guitarist wrote a hyphen", function()
+      for _, text in ipairs({ "10 12 12 11 10 10", "10,12,12,11,10,10" }) do
+        assert.are.equal("10-12-12-11-10-10", voicing.toText(assert(voicing.parse(text))))
+      end
+    end)
+
+    it("reads a separated string of low frets, and gives back the compact form", function()
+      assert.are.equal("x32010", voicing.toText(assert(voicing.parse("x-3-2-0-1-0"))))
+    end)
+  end)
+
   describe("rejecting invalid input", function()
     it("refuses a string with the wrong number of positions", function()
       local v, err = voicing.parse("x3201")
@@ -40,16 +69,48 @@ describe("voicing", function()
       assert.is_nil(v)
       assert.is_string(err)
     end)
+
+    it("answers every prefix of a chord being typed without throwing", function()
+      -- Slice 007 re-parses on each keystroke, so every intermediate state of
+      -- both forms has to come back as either a voicing or a message. A prefix
+      -- may well be a complete chord in its own right; what it may never do is
+      -- raise, or hand back nothing at all.
+      for _, text in ipairs({ "10-12-12-11-10-10", "x32010", "x-3-2-0-1-0" }) do
+        for n = 1, #text do
+          local typed = text:sub(1, n)
+          local ok, v, err = pcall(voicing.parse, typed)
+          assert.is_true(ok, "parsing '" .. typed .. "' threw: " .. tostring(v))
+          assert.is_true(v ~= nil or type(err) == "string",
+            "parsing '" .. typed .. "' refused without saying why")
+        end
+      end
+    end)
+
+    it("refuses a half-typed position rather than reading the gap as a string", function()
+      -- `10-12-` is four positions typed and two to go, not six.
+      local v, err = voicing.parse("10-12-")
+      assert.is_nil(v)
+      assert.is_truthy(err:find("6", 1, true))
+    end)
+
+    it("refuses a separated string with a token that is not a position", function()
+      local v, err = voicing.parse("10-12-12-11-10-1o")
+      assert.is_nil(v)
+      assert.is_truthy(err:find("1o", 1, true))
+    end)
   end)
 
   describe("framing", function()
+    --- The nut is fret 1: the window starts at the top of the neck.
+    local NUT = 1
+
     it("shows the nut for an open-position chord", function()
-      assert.are.equal(1, voicing.baseFret(assert(voicing.parse("x32010"))))
+      assert.are.equal(NUT, voicing.baseFret(assert(voicing.parse("x32010"))))
     end)
 
     it("shows the nut for a low chord with no open strings", function()
       -- F barre shape at the first fret.
-      assert.are.equal(1, voicing.baseFret(assert(voicing.parse("133211"))))
+      assert.are.equal(NUT, voicing.baseFret(assert(voicing.parse("133211"))))
     end)
 
     it("starts the window at the lowest fretted fret for a high chord", function()
@@ -57,7 +118,44 @@ describe("voicing", function()
     end)
 
     it("shows the nut for a chord with no fretted strings at all", function()
-      assert.are.equal(1, voicing.baseFret(assert(voicing.parse("0x000x"))))
+      assert.are.equal(NUT, voicing.baseFret(assert(voicing.parse("0x000x"))))
+    end)
+
+    it("shows the nut for every open chord a beginner learns", function()
+      for name, text in pairs({
+        E = "022100", A = "x02220", D = "xx0232",
+        G = "320003", C = "x32010", Am = "x02210", Em = "022000",
+      }) do
+        assert.are.equal(NUT, voicing.baseFret(assert(voicing.parse(text, name))), name)
+      end
+    end)
+
+    it("shows the nut for a barre shape low enough to reach it", function()
+      for name, text in pairs({
+        F = "133211", ["Bb"] = "x13331", B = "x24442", ["F#m"] = "244222",
+      }) do
+        assert.are.equal(NUT, voicing.baseFret(assert(voicing.parse(text, name))), name)
+      end
+    end)
+
+    it("frames a high voicing from the fret it starts on", function()
+      for name, framing in pairs({
+        ["Bb"] = { text = "x68876", base = 6 },
+        ["Bm"] = { text = "x79987", base = 7 },
+        ["C#m"] = { text = "9-11-11-9-9-9", base = 9 },
+        ["E at the twelfth"] = { text = "12-14-14-13-12-12", base = 12 },
+      }) do
+        local v = assert(voicing.parse(framing.text, name))
+        assert.are.equal(framing.base, voicing.baseFret(v), name)
+      end
+    end)
+
+    it("still frames from the lowest fretted fret when a string rings open", function()
+      -- An open A under a shape at the seventh fret. The nut cannot be shown
+      -- without putting the fretted notes outside a five-fret window, so the
+      -- window wins and the open string keeps its ring above the diagram —
+      -- which is how songbooks notate it.
+      assert.are.equal(7, voicing.baseFret(assert(voicing.parse("x-0-9-9-7-x"))))
     end)
   end)
 
@@ -76,6 +174,21 @@ describe("voicing", function()
     it("keeps a base fret the user overrode", function()
       local existing = voicing.new({ frets = { -1, 7, 9, 9, 8, 7 }, baseFret = 5 })
       assert.are.equal(5, voicing.baseFret(assert(voicing.parse("x79987", "Bm", existing))))
+    end)
+
+    it("keeps the override when one string of the shape moves inside the window", function()
+      local existing = voicing.new({ frets = { -1, 7, 9, 9, 8, 7 }, baseFret = 5 })
+      assert.are.equal(5, voicing.baseFret(assert(voicing.parse("x79986", "Bm", existing))))
+    end)
+
+    it("drops an override the new shape has moved out from under", function()
+      -- Retyping a completely different chord must not keep a window that
+      -- cannot show it: framed from the fifth fret, an open C has its dots
+      -- above the top of the diagram. The framing goes back to derived.
+      local existing = voicing.new({ frets = { -1, 7, 9, 9, 8, 7 }, baseFret = 5 })
+      local retyped = assert(voicing.parse("x32010", "C", existing))
+      assert.is_nil(retyped.baseFret)
+      assert.are.equal(1, voicing.baseFret(retyped))
     end)
 
     it("takes the new name, so a rename is not a shape change", function()
@@ -121,8 +234,18 @@ describe("voicing", function()
     end)
 
     it("keeps a base fret the user overrode", function()
-      local v = voicing.new({ frets = { -1, 3, 2, 0, 1, 0 }, name = "C", baseFret = 5 })
-      assert.are.equal(5, voicing.baseFret(assert(voicing.decode(voicing.encode(v)))))
+      -- Framed from the fifth rather than the seventh, which is where the
+      -- derivation would have put it: a choice only the user could have made.
+      local v = voicing.new({ frets = { -1, 7, 9, 9, 8, 7 }, name = "Bm", baseFret = 5 })
+      local back = assert(voicing.decode(voicing.encode(v)))
+      assert.are.equal(5, back.baseFret)
+      assert.are.equal(5, voicing.baseFret(back))
+    end)
+
+    it("ignores a stored override that no longer frames the chord it was saved with", function()
+      -- Belt and braces for data written before the rule existed, or by hand.
+      local damaged = voicing.encode(voicing.new({ frets = { -1, 3, 2, 0, 1, 0 }, baseFret = 9 }))
+      assert.are.equal(1, voicing.baseFret(assert(voicing.decode(damaged))))
     end)
 
     it("keeps finger numbers, which nothing renders yet", function()

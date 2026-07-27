@@ -43,6 +43,15 @@ M.STROKE = 1 / 64
 --- The nut is drawn heavier than the frets so the framing reads at a glance.
 local NUT_WEIGHT = 2.5
 
+--- The position marker's height, as a fraction of the fret cell it labels.
+---
+--- Sized from the cell rather than given a number of its own, so it tracks the
+--- grid instead of drifting away from it. It is smaller than the title because
+--- it is subordinate to it: the name says what the chord is, the marker only
+--- says where. The whole marker lives in the gutter left of the grid, which the
+--- slice 002 proportions already leave empty.
+local POSITION_HEIGHT = 0.6
+
 --- Geometry shared by `compute` and `cellAt`, so a click lands on exactly what
 --- was drawn.
 --- @param v Voicing
@@ -87,21 +96,42 @@ function M.compute(v, width, height)
     return primitive
   end
 
-  -- Nut, drawn as a heavier line at the top of the window.
+  -- The line closing the top of the window. It is the nut, drawn heavier so the
+  -- framing reads at a glance, only when the window starts at the top of the
+  -- neck; higher up it is an ordinary fret like the five below it, and the
+  -- position marker says which. Backends key off the role, so the role has to
+  -- tell the truth about which of the two it is.
+  local nutInView = g.baseFret == 1
   add({
-    kind = "line", role = "nut", colour = "ink",
+    kind = "line", role = nutInView and "nut" or "fret", colour = "ink",
     x1 = g.left - M.STROKE / 2, y1 = g.top,
     x2 = g.right + M.STROKE / 2, y2 = g.top,
-    thickness = M.STROKE * NUT_WEIGHT,
+    thickness = nutInView and M.STROKE * NUT_WEIGHT or M.STROKE,
   })
 
-  -- Frets, below the nut.
+  -- The five frets below it. The span is fixed, so this count never varies with
+  -- the framing.
   for f = 1, voicing.SPAN do
     add({
       kind = "line", role = "fret", colour = "ink",
       x1 = g.left - M.STROKE / 2, y1 = g.top + f * g.fretGap,
       x2 = g.right + M.STROKE / 2, y2 = g.top + f * g.fretGap,
       thickness = M.STROKE,
+    })
+  end
+
+  -- Position marker, naming the fret the window starts at. Only when the nut is
+  -- out of view: with the nut drawn, the window can only start at the first
+  -- fret and saying so would be noise. It sits on the first cell, so the fret it
+  -- names is the one the cell beside it is.
+  if not nutInView then
+    local h = g.fretGap * POSITION_HEIGHT
+    add({
+      kind = "text", role = "position", colour = "ink",
+      text = string.format("%dfr", g.baseFret),
+      x = 0, y = cellY(g, 1) - h / 2,
+      w = g.left - M.STROKE * 2, h = h,
+      size = h, align = "centre",
     })
   end
 
@@ -115,21 +145,30 @@ function M.compute(v, width, height)
     })
   end
 
-  -- Dots, one per fretted string, positioned relative to the top of the window
-  -- so that a high-position voicing lands in the same five cells.
+  -- Dots, one per fretted string, positioned relative to the top of the WINDOW
+  -- rather than the nut, so that a high-position voicing lands in the same five
+  -- cells an open chord does.
+  --
+  -- A fret outside the window is skipped. That only happens for a shape wider
+  -- than the five frets the span allows, which no framing can show whole; the
+  -- alternative is a dot painted off the edge of the diagram.
   local dotR = g.stringGap * 0.34
   for s = 1, v.strings do
     local fret = v.frets[s]
-    if fret > voicing.OPEN then
+    local cell = fret - g.baseFret + 1
+    if fret > voicing.OPEN and cell >= 1 and cell <= voicing.SPAN then
       add({
         kind = "circle", role = "dot", colour = "ink", filled = true,
-        cx = stringX(g, s), cy = cellY(g, fret - g.baseFret + 1), r = dotR,
+        cx = stringX(g, s), cy = cellY(g, cell), r = dotR,
       })
     end
   end
 
-  -- Open rings and muted crosses, on the marker row above the nut. Only drawn
-  -- when the nut is in view: above the nut there is no "open" to speak of.
+  -- Open rings and muted crosses, on the row above the top of the window.
+  --
+  -- They are drawn whatever the framing. A string can ring open under a shape
+  -- too high to show the nut, and a songbook still marks it with a ring above
+  -- the diagram, so the row is not conditional on the nut being in view.
   local ringR = dotR * 0.7
   local crossArm = dotR * 0.75
   for s = 1, v.strings do

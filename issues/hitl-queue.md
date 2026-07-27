@@ -64,10 +64,9 @@ packaging note at the end.
 - [ ] **Invalid input changes nothing.** Enter `x3201z`; expect a message naming the bad character
       and an item left exactly as it was.
 - [ ] **Ctrl+Z reverts the chord** in one step, like any other REAPER edit.
-- [ ] **Judgement call: high-position chords are unlabelled until slice 004.** Enter `x79987`. The
-      diagram frames itself from the seventh fret, but the marker that says "7fr" is slice 004, so
-      until then the shape is drawn without saying where on the neck it is. Confirm that is
-      acceptable in the interim, or bring 004 forward.
+- [x] ~~**Judgement call: high-position chords are unlabelled until slice 004.**~~ **Closed by slice
+      004** — the marker now renders, so there is no gap to confirm. Enter `x79987` and the diagram
+      says `7fr`; the check for that lives under slice 004 below.
 
 ### Packaging — for the orchestrator, not the tester
 
@@ -130,9 +129,48 @@ byte-for-byte identical, so nothing below is about the format. **There is no lon
 
 ### Judgement call to confirm
 
-- [ ] **A base-fret override survives a text edit.** Re-typing the chord string carries the previous
-      override forward, because the text field cannot express one and dropping it would lose data
-      on a pure rename. The cost is that retyping a completely different chord keeps an override
-      that may now be nonsense. There is no UI to clear it until slice 004/006. The alternative —
-      dropping the override whenever the frets change — silently discards an explicit choice, which
-      seemed worse. Confirm, or reverse it in slice 004.
+- [x] ~~**A base-fret override survives a text edit.**~~ **Settled by slice 004.** The override is
+      now carried across a text edit only while it can still frame the chord — every fretted note
+      inside its five-fret window — and dropped when it cannot. Nothing to test by hand; it is
+      covered by specs. See the slice 004 commit for the reasoning.
+
+## Slice 004 — fret framing and high-position voicings
+
+Version 0.8.0. Everything here is about what the diagram looks like, so it needs eyes rather than
+a spec.
+
+### Confirm on Windows
+
+- [ ] **A high-position chord is labelled with the fret it starts at.** Enter `x79987` named `Bm`.
+      Expect no heavy nut line, a `7fr` marker in the empty space to the LEFT of the grid level
+      with the first fret cell, and dots in cells 1, 3, 3, 2, 1 across the A, D, G, B and high E.
+- [ ] **A chord typed in the separated form draws correctly.** Enter `10-12-12-11-10-10` named
+      `D`. Expect a `10fr` marker and a barre-shaped block of dots. Reopen the item: the field must
+      come back as `10-12-12-11-10-10`, not `101212111010`.
+- [ ] **The marker is legible and does not collide with the grid.** This is the one piece of
+      geometry slice 002 never tuned by eye — the gutter left of the grid was empty until now. Look
+      at a two-digit marker in particular (`12-14-14-13-12-12`), which is the widest text that has
+      to fit. If it is clipped, cramped, or hard against the left edge of the image, that is a real
+      defect: the marker's size is `POSITION_HEIGHT` in `src/core/layout.lua`.
+- [ ] **The marker sits where the title does horizontally — or does not.** Its text box is given
+      `align = "centre"`, and the LICE backend does not act on that field; whether LICE centres
+      text in the box it is given is the same open question as the slice 003 title item above.
+      Answer both at once: if the title is left-aligned in its box, the marker will be hard against
+      the left edge of the canvas.
+- [ ] **The dialog still fits with the longer chord label.** The label is now
+      `Chord (e.g. x32010 or 10-12-12-11-10-10)`. If the native dialog truncates it or grows
+      absurdly wide, shorten the label — this dialog is replaced by the ImGui window in slice 006
+      anyway, so do not spend long on it.
+
+### Judgement calls to confirm
+
+- [ ] **A comma-separated chord cannot be typed into this dialog.** The parser accepts
+      `10,12,12,11,10,10`, but `dialog.prompt` splits REAPER's reply on commas and rejoins the
+      surplus into the LAST field, so the chord arrives as `10` and the name as the rest. The label
+      steers people to hyphens. Confirm that is enough for now; it fixes itself in slice 006 when
+      the ImGui window gives each field its own box.
+- [ ] **A high chord with an open string keeps the window rather than the nut.** Enter
+      `x-0-9-9-7-x`. The shape reaches the ninth fret, so the nut cannot be shown without putting
+      the dots off the diagram: it frames from the seventh and still draws an open ring above the A
+      string. That is how songbooks notate it, but it is a judgement call — confirm it reads
+      correctly rather than looking like a mistake.
