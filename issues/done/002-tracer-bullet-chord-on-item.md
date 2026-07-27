@@ -38,19 +38,22 @@ therefore be built to answer everything in **one** run:
 
 ## Acceptance criteria
 
-- [ ] An action renders a hardcoded voicing to a PNG written into a project subfolder
-- [ ] The image attaches to the selected empty item and displays in the arrange view
-- [ ] Selecting several empty items renders the display-flag variants side by side, so the correct
+- [x] An action renders a hardcoded voicing to a PNG written into a project subfolder
+- [x] The image attaches to the selected empty item and displays in the arrange view
+- [x] Selecting several empty items renders the display-flag variants side by side, so the correct
       one is chosen by looking rather than by iterating
-- [ ] Resizing an item scales the image, and the diagram's aspect ratio is not distorted
-- [ ] The diagram is legible when the item is dragged tall
-- [ ] The script prints a step-by-step report to the console, naming any step that failed
-- [ ] The report states whether text rendering worked, separately from shape rendering
-- [ ] The chosen display flag value is recorded in the repo for later slices
-- [ ] A written finding records whether LICE rendering is viable, or what the fallback must be
-- [ ] The script carries ReaPack metadata and the repository index is generated and committed
-- [ ] The tester installs it via ReaPack on Windows and runs the action successfully
-- [ ] The image reference resolves from a path relative to the project
+- [x] Resizing an item scales the image, and the diagram's aspect ratio is not distorted
+- [x] The diagram is legible when the item is dragged tall
+- [x] The script prints a step-by-step report to the console, naming any step that failed
+- [x] The report states whether text rendering worked, separately from shape rendering
+- [x] The chosen display flag value is recorded in the repo for later slices — D21/D22 in the brief,
+      and carried into `issues/003-typed-chord-to-diagram.md`
+- [x] A written finding records whether LICE rendering is viable, or what the fallback must be
+- [x] The script carries ReaPack metadata and the repository index is generated and committed
+- [ ] The tester installs it via ReaPack on Windows and runs the action successfully — **instructions
+      sent; confirmation outstanding.** Not blocking: the same script was already run successfully
+      from a manual download, so only the delivery mechanism is unconfirmed.
+- [x] The image reference resolves from a path relative to the project
 
 ## Findings — run 1 (REAPER 7.78/x64, Win64)
 

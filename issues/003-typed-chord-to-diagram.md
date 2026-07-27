@@ -23,6 +23,28 @@ on-screen grid from drifting away from the exported image.
 
 Filenames derive from a hash of the voicing, per *Naming and storage* in the parent PRD.
 
+## Settled rendering configuration — carry this forward
+
+Slice 002 established the following over four runs on the tester's machine. **These are settled; do
+not re-derive them.** The working reference implementation is
+`Chord Diagram/chord_diagram_spike.lua`, which this slice refactors into the proper modules.
+
+| Setting | Value | Why |
+|---|---|---|
+| `IMGRESOURCEFLAGS` | **3** | The only value that never repeats the image. 1 and 5 keep proportions but tile on wide items. |
+| Canvas | **1024 × 1024**, square, power of two | Confirmed good at all usable item sizes; the square shape keeps flag 3's stretching mild. |
+| Stroke weight | **proportional to canvas size** (`SIZE/64`) | A fixed pixel width vanishes when REAPER scales the image down to item height. Never use a fixed stroke. |
+| Image path | relative, under `<project>/chord-diagrams/` | REAPER resolves it against the project, keeping projects portable between machines. |
+| Chunk write | `RESOURCEFN` + `IMGRESOURCEFLAGS`, inserted before the chunk's closing `>`, with a non-empty `<NOTES>` block | The flags line is ignored when notes are empty. |
+| Title clearance | title band ends at 0.17 of canvas height, marker row at 0.245 | Anything tighter and the chord name crosses into the diagram. |
+
+The spike's `LAYOUT` table holds the vertical proportions that were tuned visually — reuse those
+numbers in the layout module rather than inventing new ones.
+
+Two API notes that cost time to establish: `JS_LICE_WritePNG` takes `(path, bitmap, wantAlpha)`, and
+text needs `JS_GDI_CreateFont` → `JS_LICE_CreateFont` → `JS_LICE_SetFontFromGDI` → `JS_LICE_DrawText`
+with Arial, which exists on both platforms.
+
 ## Acceptance criteria
 
 - [ ] The action prompts for a chord string and a name using REAPER's native input dialog
