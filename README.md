@@ -70,12 +70,3 @@ issues/        PRD and the work breakdown
 ralph/         agent workflow
 ```
 
-## Workflow
-
-This project uses the workflow from the
-[AIHero Engineer Workshop 2026](https://www.aihero.dev/ai-engineer-workshop-2026~dwnll), with a
-"Ralph" worker and the `grill-me`, `write-a-prd`, `prd-to-issues`, `tdd` and
-`improve-codebase-architecture` skills.
-
-Planning: brief → `/grill-me` → `/write-a-prd` → `/prd-to-issues`.
-Execution: run Ralph over the issue backlog using TDD.
