@@ -42,22 +42,36 @@ end
 --- Anything on the diagonal, which in practice means the muted-string cross, is
 --- stepped as a run of small squares; that is how the spike drew it and how it
 --- was signed off.
+---
+--- THE LINE ENDS WHERE THE LAYOUT SAYS IT ENDS. Thickness is spread about the
+--- segment, never along it: the rect runs from one endpoint to the other and
+--- the stepped run is inset by half a thickness so its end squares stop at the
+--- endpoints rather than straddling them. Adding half a thickness at each end
+--- instead — as this did until the alignment pass — makes every line in the PNG
+--- one stroke longer than the same line on screen, which is invisible on the
+--- strings but not on the nut or on the muted cross, whose arms are only about
+--- twice a stroke long to begin with. `core.layout` already puts the overhang
+--- the frets want into their coordinates, so a backend adding its own is
+--- drawing geometry nobody asked for.
 local function drawLine(bmp, x1, y1, x2, y2, thickness, colour)
   local t = math.max(2, thickness)
   if math.abs(y1 - y2) < 1 then
-    fillRect(bmp, math.min(x1, x2) - t / 2, y1 - t / 2, math.abs(x2 - x1) + t, t, colour)
+    fillRect(bmp, math.min(x1, x2), y1 - t / 2, math.abs(x2 - x1), t, colour)
     return
   end
   if math.abs(x1 - x2) < 1 then
-    fillRect(bmp, x1 - t / 2, math.min(y1, y2) - t / 2, t, math.abs(y2 - y1) + t, colour)
+    fillRect(bmp, x1 - t / 2, math.min(y1, y2), t, math.abs(y2 - y1), colour)
     return
   end
   local dx, dy = x2 - x1, y2 - y1
   local length = math.sqrt(dx * dx + dy * dy)
-  local steps = math.max(1, math.ceil(length / math.max(1, t / 3)))
+  local inset = math.min(t / 2, length / 2) / length
+  local ax, ay = x1 + dx * inset, y1 + dy * inset
+  local bx, by = x2 - dx * inset, y2 - dy * inset
+  local steps = math.max(1, math.ceil(length * (1 - 2 * inset) / math.max(1, t / 3)))
   for i = 0, steps do
     local p = i / steps
-    fillRect(bmp, x1 + dx * p - t / 2, y1 + dy * p - t / 2, t, t, colour)
+    fillRect(bmp, ax + (bx - ax) * p - t / 2, ay + (by - ay) * p - t / 2, t, t, colour)
   end
 end
 
@@ -66,6 +80,30 @@ end
 --- The GDI font is built, handed to LICE and destroyed per call. Arial is named
 --- because it exists on both macOS and Windows; the whole sequence was the most
 --- platform-sensitive part of slice 002 and it is reproduced here unchanged.
+---
+--- `p.align` IS DELIBERATELY NOT HONOURED, and this is the one place the two
+--- backends disagree about what a primitive means. It is not an oversight and
+--- it is not fixable with the API this plugin has. Read off js_ReaScriptAPI's
+--- published source rather than remembered:
+---
+---   * `JS_LICE_DrawText(bitmap, font, text, len, x1, y1, x2, y2)` takes no
+---     format argument. It calls LICE's `DrawText` with a hard-coded `0` for
+---     `dtFlags` — the author's own comment says "I don't know what UINT
+---     dtFlags does, so make 0" — and 0 is `DT_TOP | DT_LEFT`. There is no
+---     DT_CENTER to pass and no overload that accepts one.
+---   * `JS_LICE_MeasureText(text)` exists, since v0.985, and answers a width
+---     and a height. IT IS USELESS HERE: it forwards to LICE_MeasureText, which
+---     takes no font and walks the string against LICE's built-in bitmap font
+---     at a flat 8 pixels per character. It would report the same width for
+---     8pt Arial and for the 133-pixel bold title.
+---
+--- So the text is drawn from the top left of the box, and the box clips it. The
+--- one confirmed route to a centred string is a different drawing engine —
+--- `JS_LICE_GetDC` on the bitmap, then `JS_GDI_DrawText` with "HCENTER", which
+--- does map its align string onto real DT_ flags — and swapping the proven text
+--- path for an unproven one, on a machine that cannot run either, would risk
+--- no title at all in place of a title on the left. That call is the developer's
+--- to make with a REAPER in front of them: `issues/hitl-queue.md`, T27 and A5.
 local function drawText(bmp, p, x, y, w, h, size)
   local gdi = reaper.JS_GDI_CreateFont(math.floor(size),
     p.weight == "bold" and 700 or 400, 0, false, false, false, "Arial")

@@ -14,6 +14,41 @@
 --- PRIMITIVES are backend-neutral: `line`, `rect`, `circle` and `text`, with a
 --- semantic `colour` ("ink" or "paper") and a `role` naming the part it plays.
 --- There is nothing LICE- or ImGui-specific here.
+---
+--- LINES run from (x1, y1) to (x2, y2) and are `thickness` wide about that
+--- segment. THE SEGMENT IS THE WHOLE LINE: a backend must not add a cap beyond
+--- either end, because a line that is longer in one backend than the other is
+--- the drift this module exists to prevent. Where an overhang is wanted — the
+--- frets reach a half stroke past the outer strings — it is in the coordinates
+--- here, so both backends get it and neither invents it.
+---
+--- TEXT is the one primitive the two backends cannot render identically, so
+--- what each of its fields promises is worth stating exactly:
+---
+---   * `x`, `y`, `w`, `h` are a BOX, and `align` says where in that box the
+---     string sits. Only "centre" is ever asked for, and it means centred on
+---     both axes.
+---   * `size` is the em size the text should be set at, and `weight` is
+---     "bold" or absent.
+---
+--- ALIGNMENT IS A REQUEST, NOT A GUARANTEE, because centring needs the width of
+--- the rendered string and only one of the two backends can measure one:
+---
+---   * `adapter.imgui` measures with `CalcTextSize` and honours `align`, but
+---     draws at the ImGui window's own font size and weight, so `size` and
+---     `weight` are dropped.
+---   * `adapter.lice` honours `size` and `weight` — it builds the font — but
+---     CANNOT honour `align`. js_ReaScriptAPI exposes no way to do it:
+---     `JS_LICE_DrawText` passes a hard-coded 0 for LICE's `dtFlags`, so no
+---     DT_CENTER ever reaches it, and `JS_LICE_MeasureText` measures LICE's
+---     built-in 8-pixel bitmap font rather than the font that was set, so it
+---     cannot say how wide the string will actually be. Both checked against
+---     the extension's published source, not remembered. It therefore draws
+---     from the top left of the box and the box acts as a clip.
+---
+--- So a box is also a PROMISE THAT THE STRING FITS LEFT-ALIGNED IN IT: give
+--- text a box it only fits in when centred and the LICE backend will clip it.
+--- The known asymmetry, and the fix, are in `issues/hitl-queue.md` (T27, A5).
 local voicing = require("core.voicing")
 
 local M = {}
@@ -150,11 +185,11 @@ function M.compute(v, width, height)
   -- Barres: one finger laid flat across several strings, drawn as a capsule
   -- exactly as wide as the dots it stands in for — a rectangle from the first
   -- string it covers to the last, with a round cap on each end. Three
-  -- primitives rather than one thick line because a line's END CAPS are the
-  -- backend's business: LICE squares them off and ImGui does not, and a bar
-  -- whose length differs between the preview and the PNG is precisely the drift
-  -- this module exists to prevent. A filled rect and a filled circle are drawn
-  -- identically by both.
+  -- primitives rather than one thick line because NEITHER BACKEND CAN ROUND THE
+  -- END OF A LINE: ImGui's draw list takes no cap style, and the LICE backend
+  -- fills a rectangle. A thick line would give a bar with square ends, and
+  -- asking a backend for round ones is asking it to invent geometry. A filled
+  -- rect and a filled circle are drawn identically by both.
   --
   -- Drawn BEFORE the dots, so a dot at a barred fret sits on top of the bar
   -- rather than under it. Nothing is suppressed: the dot is a fact about the

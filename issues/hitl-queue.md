@@ -9,19 +9,28 @@ themselves is here, rewritten into one session for two people:
 - **Part 2 — the tester** (Windows, the only machine that can run any of this). A script: do this,
   expect that, and if it is wrong, what it probably means. Worked top to bottom, in order.
 
-The build under test is **0.14.0**, the first release that ships the modules under `src/`. Every
-release before it installed the action scripts alone and failed on the first `require`.
+The build under test is **0.14.0 plus the alignment pass** — the first release that ships the
+modules under `src/`. Every release before it installed the action scripts alone and failed on the
+first `require`. The exact version number is whatever step 2 below cuts; wherever this document
+says 0.14.0, read "the version the tester installed".
 
 ## How to run this pass
 
 **Developer, before the tester starts:**
 
 1. `make verify` — all four checks green.
-2. `index.xml` is already generated for 0.14.0 and committed (`daa1adc`). **Nothing has been
-   pushed.** Push `main`: the tester's ReaPack import reads `index.xml` out of the repository, so
-   nothing in Part 2 is reachable until it is on GitHub. Pushing publishes 0.14.0 to anyone who has
-   imported the repository and withdraws the *Chord Diagram (spike)* package from their list.
-3. Work Part 1 whenever — it needs nothing from the tester except the screenshots T43 brings back.
+2. **The build needs a version bump before it is pushed.** `index.xml` was generated for 0.14.0
+   (`daa1adc`) and its `<source>` URLs are pinned to commit `da1cb99` — so a later commit touching
+   `src/` is invisible to an installer until a new version is cut, and `reapack-index` never
+   rewrites a version already in the index. The alignment pass changed `src/adapter/lice.lua`
+   (line ends, see **A3**) and `src/core/layout.lua`, so **0.14.0 as committed does not contain
+   them**. Bump `@version` in all three scripts in `Chord Diagram/`, run `make index`, and commit
+   that before pushing; otherwise the tester checks a build the appendices no longer describe.
+3. **Nothing has been pushed.** Push `main`: the tester's ReaPack import reads `index.xml` out of
+   the repository, so nothing in Part 2 is reachable until it is on GitHub. Pushing publishes the
+   release to anyone who has imported the repository and withdraws the *Chord Diagram (spike)*
+   package from their list.
+4. Work Part 1 whenever — it needs nothing from the tester except the screenshots T43 brings back.
 
 **Tester:** work Part 2 in order. It is a session, not a list: nothing is checkable without a
 working install, so the install is first; the diagnostics report frames everything after it, so it
@@ -155,6 +164,27 @@ Judgement calls. Each one names the alternative and where the change would go, s
       a full barre overhangs the grid by the same amount a dot does. Does that read as a finger, or
       as a bar that has slipped off the neck?
 
+## Rendering fidelity
+
+- [ ] **D22 — The exported title is left-aligned where the on-screen one is centred, and it was
+      left that way on purpose.** `align = "centre"` is honoured by the ImGui backend and dropped
+      by the LICE one, because js_ReaScriptAPI exposes neither an alignment flag on
+      `JS_LICE_DrawText` nor a text measurement that accounts for the font — both checked against
+      the extension's source, both dead ends, both written up in **A5**. The one working route is
+      to stop using LICE for text and draw through the bitmap's device context with
+      `JS_GDI_DrawText(..., "HCENTER,VCENTER,SINGLELINE")`, which does honour alignment. That is
+      four unproven calls replacing the only text sequence ever proven on Windows, so it was not
+      taken blind. **With T27's screenshots in hand, choose one:**
+      1. **Live with it** — and move the title's box in `core.layout` so left-aligned text is where
+         you want it, rather than leaving a box whose stated alignment one backend ignores.
+      2. **Take the GDI rewrite** — `drawText` in `src/adapter/lice.lua` is the only function that
+         changes; A5 lists the calls and the font-handle trap to avoid.
+      3. **Left-align both** — drop the centring from `paint` in `src/adapter/imgui.lua`. Cheapest,
+         and the only option that needs no REAPER to verify, but it makes both backends worse in
+         order to make them agree.
+      Whichever it is, the alignment contract is now written down in the TEXT section of
+      `src/core/layout.lua` and should be updated with it.
+
 ---
 
 # Part 2 — the tester
@@ -182,7 +212,8 @@ installed copy should look like:
       **Remove**), then **Import repositories** with
       `https://github.com/tomtrembling/reaper-chord-diagram/raw/main/index.xml`. A stale local copy
       of the index is the thing most likely to make this look broken when it is not. In **Browse
-      packages**, expect **exactly one** package, *Chord Diagram*, at version **0.14.0**. The old
+      packages**, expect **exactly one** package, *Chord Diagram*, at the version step 2 cut
+      (**0.14.0 or later** — never below it). The old
       *Chord Diagram (spike)* must be **gone**; if ReaPack lists it as obsolete and offers to
       uninstall it, accept.
 - [ ] **T2 [BLOCKER] [record] All three actions appear.** Install that one package, then
@@ -266,9 +297,11 @@ and select it.
       framed from the fifth. Then press Auto: the box returns to 7 and the label to automatic.
 - [ ] **T14 The fret marker is legible and does not collide with the grid.** This is the one piece
       of geometry never tuned by eye — the gutter left of the grid was empty until slice 004. Look
-      at the widest text that has to fit: `12-14-14-13-12-12`. Clipped, cramped, or hard against
-      the left edge of the image is a real defect; the marker's size is `POSITION_HEIGHT` in
-      `src/core/layout.lua`.
+      at the widest text that has to fit: `12-14-14-13-12-12`. Clipped or cramped is a real defect;
+      the marker's size is `POSITION_HEIGHT` in `src/core/layout.lua`. **In the exported PNG it will
+      also be hard against the left edge — that part is expected, see T27** — and the two combine:
+      left-aligned, `12fr` all but fills its box, and the box is the clip rectangle, so this is the
+      case most likely to lose its tail.
 
 ## 5. Clicking the grid
 
@@ -331,11 +364,23 @@ misfire gets reported as the specific thing it is.
       Item Manager does not surface the name at all, see **A4**.
 - [ ] **T26 A chord left unnamed is still titled with its own chord string.** That fallback survived
       the name field; it is now a default rather than the only route.
-- [ ] **T27 Is the title centred?** `JS_LICE_DrawText` is given the full width of the canvas as its
-      box, and whether LICE centres text inside a box or puts it hard against the left edge has
-      never been seen. Look at both the title and the `7fr` marker in an exported PNG, and compare
-      them with the same two on screen. **If the window centres them and the PNG does not, that is
-      a known asymmetry with a known fix — see A5.**
+- [ ] **T27 The title is centred on screen and LEFT-ALIGNED in the PNG. Confirm it, do not judge
+      it.** This is established from js_ReaScriptAPI's source, not guessed, so it is a prediction to
+      check rather than a question — see **A5** for why the extension leaves no way to do better.
+      Expect, on an item with a named chord and on `x79987`:
+      - **In the exported PNG:** the title starts hard against the **left edge of the image**, not
+        centred over the grid. The `7fr` marker likewise sits against the left edge rather than
+        centred in the gutter. Both are vertically at the top of their band rather than centred in
+        it.
+      - **In the window:** both are centred, horizontally and vertically, and both read smaller and
+        lighter than in the PNG (the window uses its own font — A3).
+      - **[record] Say whether the left-aligned title is tolerable.** It is a one-line answer that
+        settles **D22**: live with it, move the title's box, or take the GDI rewrite in A5.
+      - **Anything else is news.** A *centred* title in the PNG would mean LICE is not doing what
+        its source says; report it. A title that is **cut off** is a different defect — the box is
+        the clip rectangle, so a string too wide for it loses its tail. Watch `12fr` in particular
+        (T14): at the canvas size the plugin renders, `12fr` very nearly fills the gutter box, and
+        left-aligned it has no slack at all.
 - [ ] **T28 Cancel and Escape leave the item exactly as it was.** Cancel closes the window with no
       new PNG in `chord-diagrams/`, no change to the item, and nothing on the undo stack to press
       Ctrl+Z through. Escape with no field focused does the same (the window must have focus for
@@ -509,16 +554,28 @@ minimum travel in pixels before a drag counts, in `grid()` in `src/adapter/imgui
 ## A3. What the grid and the PNG are allowed to differ in
 
 Both are drawn from the same primitive list, so **any difference in geometry is a real bug** —
-spacing, dot positions, which fret a dot is in, the length or position of a bar. Exactly two
-differences are expected:
+spacing, dot positions, which fret a dot is in, the length or position of a bar. Exactly three
+differences are expected, all three in how text and curves are *rendered* rather than in where
+anything is:
 
-1. The on-screen title and fret marker use the ImGui window font at its own size rather than the
-   size the layout asks for, so they read smaller than in the image. (Sizing text needs a font
-   object attached to the context, and how that is done changed between ReaImGui versions.)
+1. The on-screen title and fret marker use the ImGui window font at its own size and weight rather
+   than the size the layout asks for, so they read smaller and lighter than in the image. (Sizing
+   text needs a font object attached to the context, and how that is done changed between ReaImGui
+   versions; the bold weight goes the same way.)
 2. The on-screen ring above an open string is a stroked circle, where the PNG punches a white disc
    out of a black one.
+3. **Text alignment.** On screen the title and the fret marker are centred in their boxes; in the
+   PNG they are hard against the top left of the same box. Established from the extension's source
+   — see **T27** for exactly what to look at and **A5** for why.
 
-Text *alignment* is a third difference that may or may not appear — see A5.
+**Line lengths are NOT on that list, and used to be.** Until the alignment pass the LICE backend
+added half a stroke of cap at each end of every line, so every line in the PNG ran one stroke
+longer than the same line on screen — most visibly on the nut, which is two and a half strokes
+thick, and on the arms of a muted-string cross, which are only about twice a stroke long to begin
+with. It now draws the segment the layout specifies and nothing more. If a line in the PNG still
+overhangs where the same line on screen stops — the nut poking further past the outer strings than
+the frets do, or a visibly fatter, longer cross — that is a regression in `drawLine` in
+`src/adapter/lice.lua`, not an allowed difference.
 
 ## A4. Storage, and what to do if a chord does not come back
 
@@ -545,19 +602,34 @@ design. An earlier design put it on a bespoke `CHORDDIAGRAM` line inside the ite
   `reaper.GetSetMediaItemInfo_String(item, "P_NOTES", ...)`, or a name column that reads takes only
   — in which case raise a new issue.
 
-## A5. Text alignment — a known asymmetry
+## A5. Text alignment — a known asymmetry, and why it is still here
 
-`src/core/layout.lua` gives the title and the fret marker a box and `align = "centre"`. The two
-backends do not treat that field the same way:
+`src/core/layout.lua` gives the title and the fret marker a box and `align = "centre"`.
+`src/adapter/imgui.lua` measures the string with `CalcTextSize` and centres it in that box.
+`src/adapter/lice.lua` cannot, and the PNG therefore gets the string from the top left of the box.
 
-- `src/adapter/imgui.lua` measures the string with `CalcTextSize` and centres it in the box.
-- `src/adapter/lice.lua` hands the box to `JS_LICE_DrawText` and passes no alignment flag at all,
-  so the PNG gets whatever LICE does by default — which has never been observed.
+**This is not an oversight and it is not one line away from being fixed.** Both of the obvious
+routes were checked against js_ReaScriptAPI's published source (`js_ReaScriptAPI.cpp` and
+`js_ReaScriptAPI_def.h`) and WDL's `lice/lice_text.cpp`, rather than remembered, and both are dead:
 
-So if **T27** shows a centred title on screen and a left-aligned one in the image, that is not
-drift in the layout: it is `drawText` in `src/adapter/lice.lua` needing either a LICE
-text-alignment flag or the same manual centring the ImGui backend does. Report which of the two you
-saw, for the title and for the `7fr` marker.
+| Route | What the source says |
+| --- | --- |
+| An alignment flag on `JS_LICE_DrawText` | There is none. The binding is `(bitmap, font, text, len, x1, y1, x2, y2)` and it calls LICE's `DrawText` with a hard-coded `0` for `dtFlags`, with the author's comment "I don't know what UINT dtFlags does, so make 0". `0` is `DT_TOP \| DT_LEFT`. No overload takes flags. |
+| Measure and offset, as the ImGui backend does | `JS_LICE_MeasureText(text)` exists (added v0.985) and returns a width and a height — but it forwards to `LICE_MeasureText`, which **takes no font**. It walks the string against LICE's built-in bitmap font at a flat 8 pixels per character. It would report the same width for 8pt Arial as for the 133-pixel bold title, so offsetting by it would move the text to a *different* wrong place. |
+| `JS_LICE_SetFontFromGDI`'s `moreFormats` string | Its documented options are VERTICAL, BOTTOMUP, NATIVE, BLUR, INVERT, MONO, SHADOW, OUTLINE. No alignment among them. |
+
+**The one route that does work, and is D22's decision to take:** the bitmap is created as a system
+bitmap, so `JS_LICE_GetDC(bmp)` returns a real device context, and `JS_GDI_DrawText(dc, text, len,
+l, t, r, b, "HCENTER,VCENTER,SINGLELINE")` *does* map its align string onto genuine `DT_CENTER` /
+`DT_VCENTER` flags. That means abandoning the LICE text call for a GDI one: select the font into
+the DC with `JS_GDI_SelectObject`, set `JS_GDI_SetTextColor` and `JS_GDI_SetTextBkMode`, draw, and
+restore the previously selected font before deleting it or the font handle leaks. Four calls this
+project has never run, replacing the sequence that was the most platform-sensitive part of slice
+002 and the only one proven on Windows. Done blind it trades "the title is on the left" for a
+possible "there is no title", which is why it was not done blind.
+
+So when **T27** reports a centred title on screen and a left-aligned one in the image, that is the
+predicted result, not drift in the layout. What is wanted back is the judgement in **D22**.
 
 ## A6. Notes, not checks
 

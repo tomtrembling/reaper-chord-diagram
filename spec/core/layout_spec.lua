@@ -245,6 +245,31 @@ describe("layout", function()
     end
   end)
 
+  it("gives every text primitive a box and an alignment to place it in that box",
+    function()
+      -- `align` is the one field the two backends do not treat alike: the ImGui
+      -- backend measures the string and centres it, and the LICE backend cannot
+      -- measure text at all and so draws from the top left of the box. A text
+      -- primitive that omitted the field would therefore be centred on screen by
+      -- accident of the default and never in the PNG, which is a divergence
+      -- nobody would think to look for. Stating it is what makes the difference
+      -- a known one. See the TEXT section of `core.layout`.
+      local unaligned = 0
+      for _, v in ipairs({ C, Bm }) do
+        for _, p in ipairs(layout.compute(v, 1024, 1024).primitives) do
+          if p.kind == "text" then
+            unaligned = unaligned + 1
+            assert.are.equal("centre", p.align, p.role .. " has no alignment")
+            for _, field in ipairs({ "x", "y", "w", "h", "size" }) do
+              assert.is_number(p[field], p.role .. " has no " .. field)
+            end
+          end
+        end
+      end
+      -- A title each, and the position marker the high voicing needs.
+      assert.are.equal(3, unaligned)
+    end)
+
   it("scales to any surface without changing the primitives", function()
     local small = layout.compute(C, 128, 128).primitives
     local large = layout.compute(C, 4096, 4096).primitives
