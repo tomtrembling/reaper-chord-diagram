@@ -9,27 +9,27 @@ themselves is here, rewritten into one session for two people:
 - **Part 2 — the tester** (Windows, the only machine that can run any of this). A script: do this,
   expect that, and if it is wrong, what it probably means. Worked top to bottom, in order.
 
-The build under test is **0.14.0 plus the alignment pass** — the first release that ships the
-modules under `src/`. Every release before it installed the action scripts alone and failed on the
-first `require`. The exact version number is whatever step 2 below cuts; wherever this document
-says 0.14.0, read "the version the tester installed".
+The build under test is **0.15.0** — the first release that ships the modules under `src/`, and the
+first that contains the alignment pass. Every release before 0.14.0 installed the action scripts
+alone and failed on the first `require`; 0.14.0 fixed that but predates the line-end fix in **A3**.
+Wherever this document says 0.14.0, read 0.15.0.
 
 ## How to run this pass
 
 **Developer, before the tester starts:**
 
-1. `make verify` — all four checks green.
-2. **The build needs a version bump before it is pushed.** `index.xml` was generated for 0.14.0
-   (`daa1adc`) and its `<source>` URLs are pinned to commit `da1cb99` — so a later commit touching
-   `src/` is invisible to an installer until a new version is cut, and `reapack-index` never
-   rewrites a version already in the index. The alignment pass changed `src/adapter/lice.lua`
-   (line ends, see **A3**) and `src/core/layout.lua`, so **0.14.0 as committed does not contain
-   them**. Bump `@version` in all three scripts in `Chord Diagram/`, run `make index`, and commit
-   that before pushing; otherwise the tester checks a build the appendices no longer describe.
-3. **Nothing has been pushed.** Push `main`: the tester's ReaPack import reads `index.xml` out of
-   the repository, so nothing in Part 2 is reachable until it is on GitHub. Pushing publishes the
-   release to anyone who has imported the repository and withdraws the *Chord Diagram (spike)*
-   package from their list.
+1. `make verify` — all four checks green. *(Done: green at `5a6dea1`, 163 specs.)*
+2. Cut the build. *(Done: 0.15.0 committed at `f87cd7b`, `index.xml` regenerated at `5a6dea1` and
+   its `index-check` guard passed — newest version block is 3 actions and 17 module sources.)*
+   Standing rule for every future pass: **a change under `src/` cannot reach an installer without a
+   version bump.** `reapack-index` never rewrites a version already in the index, and the
+   `<source>` URLs pin to the commit the version was cut at. Bump `@version` in all three scripts
+   in `Chord Diagram/` — `spec/header_version_spec.lua` ties them to `core.version.CURRENT`, so it
+   will fail the build if you bump one and forget the rest — then `make index`, then commit.
+3. **Nothing has been pushed. This is the only step left before the tester can start.** Push
+   `main`: the tester's ReaPack import reads `index.xml` out of the repository, so nothing in
+   Part 2 is reachable until it is on GitHub. Pushing publishes the release to anyone who has
+   imported the repository and withdraws the *Chord Diagram (spike)* package from their list.
 4. Work Part 1 whenever — it needs nothing from the tester except the screenshots T43 brings back.
 
 **Tester:** work Part 2 in order. It is a session, not a list: nothing is checkable without a
