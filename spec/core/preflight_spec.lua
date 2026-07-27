@@ -95,3 +95,24 @@ describe("preflight", function()
     assert.matches("Save the project", said)
   end)
 end)
+
+describe("preflight for the project-wide sweep", function()
+  it("runs with nothing selected at all", function()
+    -- The sweep is about every item in the project, so what happens to be
+    -- selected is not its business. This is the whole reason it asks a
+    -- different question rather than reusing the editor's.
+    assert.is_nil(preflight.sweepRefusal(environment({ selected = 0, empty = 0 })))
+  end)
+
+  it("still needs somewhere to write the images it rebuilds", function()
+    -- Regenerating into a project that was never saved would put the diagrams
+    -- nowhere and link them from nothing.
+    local said = preflight.sweepRefusal(environment({ projectSaved = false }))
+    assert.matches("Save the project", said)
+  end)
+
+  it("still needs the extension that does the rendering", function()
+    local said = preflight.sweepRefusal(environment({ missing = { "js_ReaScriptAPI" } }))
+    assert.matches("js_ReaScriptAPI", said)
+  end)
+end)

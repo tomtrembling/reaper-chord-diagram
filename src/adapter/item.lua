@@ -36,6 +36,24 @@ function M.selectedEmptyItems()
   return empty, total
 end
 
+--- Every media item in the project, in project order.
+---
+--- A DIFFERENT QUESTION FROM `M.selectedEmptyItems`, and deliberately not a
+--- filtered version of it. The sweep repairs items nobody has selected, and it
+--- decides what to do with each one from WHAT IT CARRIES rather than from what
+--- kind of item it is: a chord that has somehow ended up on an item with a take
+--- is still the user's data and is still repaired, where filtering on
+--- emptiness here would drop it silently and report a smaller number than the
+--- truth.
+--- @return table[] items
+function M.allItems()
+  local items = {}
+  for i = 0, reaper.CountMediaItems(0) - 1 do
+    items[#items + 1] = reaper.GetMediaItem(0, i)
+  end
+  return items
+end
+
 --- The item's state chunk.
 --- @param item userdata
 --- @return string|nil

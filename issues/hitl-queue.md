@@ -559,3 +559,89 @@ after anything that fails.
 - [ ] **The report includes the raw stored voicing** of the selected item (`Chord on item`). It is
       the encoded token, not a chord string — it is there because it is the fact that says whether
       persistence worked, and it decodes by eye. Say if it is noise.
+
+---
+
+## Slice 010 — diagram recovery
+
+Version 0.13.0, and **the package now installs THREE actions**: `Chord Diagram`,
+`Chord Diagram: copy diagnostics`, and the new `Chord Diagram: regenerate missing diagrams`
+(`Chord Diagram/chord_diagram_regenerate.lua`).
+
+None of this could be run here: REAPER is not on the development machine, so every check below is a
+first execution. **The sweep writes to items across the whole project** — do the first run of it on
+a throwaway copy of a project, not on anything the tester cares about.
+
+### Packaging — for the orchestrator, not the tester
+
+- [ ] **The third action needs an index entry.** `make index` was not run and nothing was pushed,
+      per the standing brief. `chord_diagram_regenerate.lua` carries a full ReaPack header
+      (`@description Chord Diagram: regenerate missing diagrams`, `@version 0.13.0`, `@about`,
+      `@changelog`) in the same shape as the other two, so `reapack-index` should pick it up as a
+      third package in the `Chord Diagram` category. Confirm all three appear in `index.xml` and
+      that ReaPack offers all three actions.
+- [ ] **All three actions need `src/` on the same terms.** The new script carries a COPY of the
+      module bootstrap, for the same reason the diagnostics one does. It also requires
+      `src/adapter/diagram.lua` and `src/core/recovery.lua`, both new this slice.
+
+### The two behaviours, in order
+
+- [ ] **Silent repair on open.** Make a chord on an empty item and confirm the diagram shows. Delete
+      that one PNG from `chord-diagrams/` in the project folder. Run `Chord Diagram` on the item
+      again. **The image should be back and displayed by the time the window is open**, with no
+      message of any kind, and the grid should show the chord as before. Then Cancel and confirm the
+      item still displays the diagram.
+- [ ] **THE MOST UNCERTAIN THING IN THE SLICE: does REAPER re-read a file it already failed to
+      load?** The repair rewrites the item's state chunk after rendering, on the theory that setting
+      the chunk again makes REAPER look for the resource a second time. Nobody has been able to test
+      that here. **If the rebuilt diagram does not appear until the project is closed and reopened,
+      say so** — the fix is a different nudge (`UpdateItemInProject`, or clearing `RESOURCEFN` and
+      setting it back in two writes), not a different design, and the voicing is safe either way.
+- [ ] **The whole folder.** Delete the entire `chord-diagrams/` folder from a project with several
+      chords in it. Run `Chord Diagram: regenerate missing diagrams` with nothing selected. It
+      should recreate the folder, rebuild every diagram, and report the count. Confirm every item
+      displays its diagram again and that they are the RIGHT diagrams — same chord on the same item,
+      not shuffled.
+- [ ] **One Ctrl+Z undoes the whole sweep**, not one item at a time. Check the undo history shows a
+      single "Chord diagram: regenerate missing diagrams" entry.
+- [ ] **Nothing missing, nothing written.** Run the action again immediately. It should report
+      "No diagrams needed regenerating" with the number of chords it checked, and — worth checking —
+      **should NOT add an undo point**, since it opens no undo block when there is no work.
+- [ ] **A project with no chords at all** answers "No chords found in this project" rather than
+      counting to zero, and a project with audio and MIDI items mixed in is unaffected by the sweep.
+- [ ] **Items with no chord are skipped, not errored.** Most items in a real project carry nothing.
+      Run the sweep on a real project of the tester's and confirm it is quick, quiet, and changes
+      nothing it should not.
+
+### The new API calls — unconfirmed signatures
+
+- [ ] **`reaper.CountMediaItems(0)` and `reaper.GetMediaItem(0, i)`** are the only calls this slice
+      adds, both in `adapter.item.allItems`. They are the project-wide equivalents of the selection
+      calls already proven, and nothing else in the sweep is new. If the action errors immediately
+      with nothing happening, these are the first suspects.
+
+### Judgement calls to confirm
+
+- [ ] **The sweep visits EVERY item, not only empty ones.** It decides what to do from what an item
+      carries rather than from what kind of item it is, so a chord that has somehow ended up on an
+      item with a take is still repaired. The alternative — filtering to empty items — would drop
+      that data silently and report a smaller number than the truth. Say if a chord on a non-empty
+      item ever turns up and this reads as wrong.
+- [ ] **The sweep requires ReaImGui even though it never opens a window.** It shares
+      `core.preflight`'s installation checks with the editor so the two cannot disagree about what a
+      working install is. The cost is that a machine with js_ReaScriptAPI but no ReaImGui is refused
+      a recovery it could technically perform. The alternative is per-action dependency lists, which
+      is more machinery than the case seems to warrant — but if a tester ever hits it on a fresh
+      machine, that is the fix.
+- [ ] **A failure part way through does not stop the sweep.** Each item is repaired atomically and
+      the ones that worked stay fixed; the count of failures is reported and every reason is
+      recorded for the diagnostics action. Stopping at the first failure would leave the rest of an
+      already-broken project broken. Confirm the wording reads as honest rather than alarming.
+- [ ] **A silent repair that fails stays silent.** It is recorded for the diagnostics action but no
+      message is shown, because the user asked to edit a chord and can still do that — Apply renders
+      through the same path and reports properly. Say if a silent failure feels like the wrong
+      trade.
+- [ ] **The sweep records damaged chords to the last-error slot.** A project containing one
+      unreadable chord will leave an error behind in the diagnostic report even though the sweep
+      itself succeeded. Consistent with "nothing clears the last error", but say if it reads as a
+      failure that did not happen.

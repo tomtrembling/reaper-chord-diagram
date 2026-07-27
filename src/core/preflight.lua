@@ -13,13 +13,18 @@ local M = {}
 --- @field missing string[] required extensions that are not installed, by name
 --- @field unusable { extension: string, call: string }|nil installed, too old
 --- @field projectSaved boolean
---- @field selected integer media items selected, of any kind
---- @field empty integer how many of those are empty items
+--- @field selected integer|nil media items selected, of any kind
+--- @field empty integer|nil how many of those are empty items
 
---- Why the action will not run, or nil if it will.
+--- What every action needs before it can do anything at all: a host that will
+--- run it, the extensions it is built on, and somewhere to keep an image.
+---
+--- SHARED RATHER THAN RESTATED. Two actions with their own idea of what a
+--- working installation is would eventually disagree, and the one that
+--- disagreed by being laxer would fail somewhere deeper and less explicably.
 --- @param env Environment
 --- @return string|nil refusal
-function M.refusal(env)
+local function installation(env)
   -- THE HOST IS ASKED ABOUT FIRST, before the extensions it would have to run.
   -- On a REAPER too old for ReaImGui, ReaImGui is usually missing as well —
   -- and "install ReaImGui" would send the user to install something their
@@ -56,6 +61,20 @@ function M.refusal(env)
     return "Save the project first.\n\nDiagrams are stored beside the project "
       .. "file so they travel with it."
   end
+  return nil
+end
+
+--- Why the chord editor will not run, or nil if it will.
+---
+--- Everything `installation` asks, and then the selection: this action edits
+--- ONE item, and which item is not something it will ever decide for itself.
+--- @param env Environment
+--- @return string|nil refusal
+function M.refusal(env)
+  local refusal = installation(env)
+  if refusal then
+    return refusal
+  end
   if env.selected == 0 then
     return "Select an empty item first.\n\nInsert one with "
       .. "Insert > Empty item, then select it."
@@ -69,6 +88,19 @@ function M.refusal(env)
       .. "empty item, so an audio or MIDI item is never altered."
   end
   return nil
+end
+
+--- Why the project-wide regeneration will not run, or nil if it will.
+---
+--- The same installation, and NONE of the selection: the sweep visits every
+--- item in the project, so it neither needs nor reads the selection. That
+--- difference is the reason this is a second question rather than a flag on the
+--- first — a flag would have put "does this action care about the selection?"
+--- inside the function instead of at the two call sites that know the answer.
+--- @param env Environment
+--- @return string|nil refusal
+function M.sweepRefusal(env)
+  return installation(env)
 end
 
 return M

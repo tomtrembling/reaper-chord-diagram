@@ -1,6 +1,6 @@
 --[[
 @description Chord Diagram
-@version 0.12.0
+@version 0.13.0
 @author Tom Trembling
 @about
   Capture a guitar chord voicing and pin its diagram to a point in the timeline,
@@ -38,12 +38,25 @@
   A barre cannot be written in a chord string, so retyping the text of a chord
   that has one keeps it.
 
+  IF A DIAGRAM DISAPPEARS, it repairs itself. Opening this action on a chord
+  whose image file has gone rebuilds it before the window opens, and you should
+  never notice. If a whole folder of them has gone — a project copied to
+  another machine without it, or the images tidied away — run the action "Chord
+  Diagram: regenerate missing diagrams", which rebuilds every one of them in
+  the project and says how many it did.
+
   IF SOMETHING GOES WRONG, run the action "Chord Diagram: copy diagnostics". It
   puts a plain-text report on your clipboard — versions, paths, what is selected
   and the last error this action showed — for pasting into a message.
 
   Requires REAPER 6.44 or newer, js_ReaScriptAPI and ReaImGui 0.9 or newer.
 @changelog
+  0.13.0 Missing diagrams repair themselves. Opening a chord whose image file
+        has gone rebuilds it silently before the window opens, and a third
+        action, "Chord Diagram: regenerate missing diagrams", rebuilds every
+        missing one in the project in a single undoable step and reports how
+        many. It skips items carrying no chord, leaves images that are already
+        there alone, and will not write to a chord it cannot read.
   0.12.0 Every refusal now explains itself: nothing selected, several items
         selected, an item that is not empty, a missing extension named
         individually, or a REAPER too old, each with its own message and
@@ -101,27 +114,15 @@ for _, root in ipairs({
 end
 
 local voicingOf = require("core.voicing")
-local layout = require("core.layout")
-local chunkOf = require("core.chunk")
 local preflight = require("core.preflight")
 
 local deps = require("adapter.deps")
+local diagram = require("adapter.diagram")
 local dialog = require("adapter.dialog")
 local errors = require("adapter.errors")
 local grid = require("adapter.imgui")
 local itemAdapter = require("adapter.item")
-local lice = require("adapter.lice")
 local project = require("adapter.project")
-
---------------------------------------------------------------------------------
--- Settled rendering configuration
---
--- Established over four runs on the tester's machine in slice 002. Do not
--- re-derive these; see issues/done/002-tracer-bullet-chord-on-item.md.
---------------------------------------------------------------------------------
-
-local CANVAS = 1024 -- square, power of two
-local IMGRESOURCEFLAGS = 3 -- the only value that never repeats the image
 
 local TITLE = "Chord Diagram"
 
@@ -202,6 +203,41 @@ if readError then
 end
 
 --------------------------------------------------------------------------------
+-- Repair, before the window opens
+--
+-- The item's chord is data and its picture is a derivative, which means a
+-- picture that has gone missing is not a loss — it is a file that has not been
+-- written yet. So it is written, here, silently: the filename is a hash of the
+-- voicing, so the rebuild lands on exactly the path the item is already
+-- pointing at, and the user opens the editor on a chord that was briefly
+-- broken and never finds out.
+--
+-- IT ALERTS NOBODY IF IT FAILS. Repair is not what the user asked for — they
+-- asked to edit a chord, and they can still do that; pressing Apply renders the
+-- diagram again through the same path and reports properly if it cannot. An
+-- error box about a background repair would interrupt them with a problem that
+-- is about to solve itself. It is RECORDED, so the diagnostics action can still
+-- say what happened.
+--------------------------------------------------------------------------------
+
+if existing and not diagram.imagePresent(projectDir, existing) then
+  local repaired, repairError = itemAdapter.asUndoableEdit(
+    "Chord diagram: rebuild missing diagram",
+    function()
+      return diagram.attach(item, chunkText, existing, projectDir)
+    end)
+
+  if repaired then
+    -- The snapshot this action holds is now the chunk BEFORE the repair, and
+    -- it is what `writeChord` would roll back to if Apply half-failed. Rolling
+    -- back to it would undo the repair as well, so the snapshot is retaken.
+    chunkText = itemAdapter.chunk(item) or chunkText
+  else
+    errors.record("Silent repair failed: " .. tostring(repairError))
+  end
+end
+
+--------------------------------------------------------------------------------
 -- Render and attach
 --
 -- Runs when the user presses Apply, and only then. Cancel and Escape call
@@ -220,43 +256,12 @@ local function apply(v)
     v = voicingOf.setName(v, voicingOf.toText(v))
   end
 
-  local filename = voicingOf.fingerprint(v) .. ".png"
-  local relativePath = project.relativeImagePath(filename)
-  local absolutePath = project.absoluteImagePath(projectDir, filename)
-
-  project.ensureImageFolder(projectDir)
-
-  -- The filename is a hash of the voicing, so an identical chord elsewhere in
-  -- the project already has its image on disk and there is nothing to render.
-  if not project.exists(absolutePath) then
-    local rendered, renderError = lice.writePNG(layout.compute(v, CANVAS, CANVAS), absolutePath)
-    if not rendered then
-      return refuse("The diagram could not be rendered.\n\n" .. tostring(renderError))
-    end
-  end
-
-  -- The chunk transformation happens BEFORE the undo block opens. It is pure
-  -- string work that can fail, and failing inside the block would open one for
-  -- an edit that never starts.
-  local updated, chunkError = chunkOf.setImage(chunkText, {
-    -- The chord name goes into the item's notes: that is both what REAPER shows
-    -- as the empty item's label and what makes it findable in the Item Manager.
-    -- A non-empty notes block is also what makes IMGRESOURCEFLAGS take effect.
-    filename = relativePath,
-    flags = IMGRESOURCEFLAGS,
-    notes = v.name,
-  })
-  if not updated then
-    return refuse("The item's state could not be updated.\n\n" .. tostring(chunkError)
-      .. "\n\nThe item is unchanged.")
-  end
-
-  -- Both writes go inside the one undo block, so the picture and the data that
-  -- produced it can never be one Ctrl+Z out of step with each other. Their
-  -- order, and what happens if the second one fails, are `adapter.item`'s —
-  -- the rule and the code that must obey it belong in the same place.
+  -- Rendering and both writes are `adapter.diagram`'s, so that Apply, the
+  -- silent repair above and the project-wide sweep all do the same thing in
+  -- the same order. The undo block stays here, because it is the scope of the
+  -- edit and only the caller knows what that is: one chord.
   local ok, err = itemAdapter.asUndoableEdit("Chord diagram: " .. v.name, function()
-    return itemAdapter.writeChord(item, chunkText, updated, voicingOf.encode(v))
+    return diagram.attach(item, chunkText, v, projectDir)
   end)
 
   if not ok then

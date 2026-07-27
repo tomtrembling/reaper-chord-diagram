@@ -24,7 +24,19 @@ via **Extensions → ReaPack → Synchronise packages**.
 Requires REAPER 6.44 or newer, plus ReaImGui 0.9 or newer and js_ReaScriptAPI, both installable
 through ReaPack. The script checks all three at startup and names any that are missing or too old.
 
-The package installs two actions: **Chord Diagram**, and **Chord Diagram: copy diagnostics**.
+The package installs three actions: **Chord Diagram**, **Chord Diagram: regenerate missing
+diagrams**, and **Chord Diagram: copy diagnostics**.
+
+## If a diagram disappears
+
+The chord is stored on the item as data and the image is only ever derived from it, so a missing
+picture is a file that has not been written yet rather than something that is lost.
+
+Opening **Chord Diagram** on an item whose image has gone rebuilds it before the window opens, and
+you should not notice. If a whole folder of them has gone — a project copied to another machine
+without it, or the images tidied away as unused files — run **Chord Diagram: regenerate missing
+diagrams**. Nothing needs to be selected; it rebuilds every missing diagram in the project in a
+single undoable step and reports how many, including when the answer is none.
 
 ## Reporting a problem
 

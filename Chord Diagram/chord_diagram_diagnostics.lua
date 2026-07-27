@@ -1,6 +1,6 @@
 --[[
 @description Chord Diagram: copy diagnostics
-@version 0.12.0
+@version 0.13.0
 @author Tom Trembling
 @about
   Copies a plain-text report about the Chord Diagram plugin to the clipboard, so
@@ -15,6 +15,7 @@
 
   Nothing is changed by running this.
 @changelog
+  0.13.0 No change; released alongside Chord Diagram 0.13.0.
   0.12.0 First release, alongside Chord Diagram 0.12.0.
 --]]
 
