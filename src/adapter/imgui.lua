@@ -41,7 +41,8 @@ local FUNCTIONS = {
   "CreateContext",
   "Begin", "End", "SetNextWindowSize",
   "GetContentRegionAvail", "GetCursorScreenPos", "SameLine",
-  "Button", "InvisibleButton", "IsItemClicked", "GetMousePos", "IsKeyPressed",
+  "Button", "InvisibleButton", "IsItemClicked", "IsItemActive",
+  "GetMousePos", "IsKeyPressed",
   "InputText", "InputInt", "IsAnyItemActive",
   "GetWindowDrawList", "CalcTextSize",
   "DrawList_AddLine", "DrawList_AddRectFilled",
@@ -267,9 +268,11 @@ end
 --- `voicing` is the value; `text` is the chord string as the user currently has
 --- it written. Two representations of one thing, which is the whole difficulty
 --- of this window — see `chordField`.
+--- `drag` is the gesture in progress on the grid, if the mouse is down on it.
 --- @class GridState
 --- @field voicing Voicing
 --- @field text string
+--- @field drag { fret: integer, from: integer, to: integer }|nil
 
 --- The free-text name, which is drawn on the diagram and names the item.
 ---
@@ -398,16 +401,67 @@ local function grid(ImGui, ctx, state)
   -- Claimed after painting so the click region covers exactly the square that
   -- was drawn, and so the cursor moves past it for the button row below.
   ImGui.InvisibleButton(ctx, "##grid", size, size)
+
+  -- Every query below is about the button just claimed, so nothing may be drawn
+  -- between there and here.
+  local mx, my = ImGui.GetMousePos(ctx)
+  local index, fret = layout.cellAt(computed, mx - ox, my - oy)
+
+  -- WHERE THE LINE BETWEEN A CLICK AND A DRAG SITS.
+  --
+  -- Both gestures open with the mouse going down on a cell, so they can only be
+  -- told apart by what happens next, and the test has to be one that neither
+  -- gesture can fail by accident. It is this: DID THE POINTER END ON A
+  -- DIFFERENT STRING FROM THE ONE IT STARTED ON, AT THE SAME FRET?
+  --
+  --   * Ended where it began — a CLICK, dispatched to `voicing.toggleFret`
+  --     exactly as in slice 006. Vertical wander does not matter: a click that
+  --     slides up or down its own string is still a click on the string it
+  --     started on, so a shaky hand cannot turn one into a barre.
+  --   * Ended on another string of the same fret row — a DRAG, and the barre
+  --     spans from the string it started on to the string it ended on.
+  --
+  -- The fret is taken from the cell the drag STARTED in and never moves after
+  -- that; wandering into another row leaves the span where it was rather than
+  -- redrawing the bar at whichever row the pointer happened to end in. A drag
+  -- released off the grid keeps the last cell it saw, for the same reason.
+  --
+  -- The residual risk is a click landing near the midpoint between two strings
+  -- and wobbling across the boundary, which would draw a two-string bar nobody
+  -- asked for. `layout.cellAt` snaps to the nearest string, so that needs a
+  -- press about half a string gap off centre; the bar is visible immediately
+  -- and one click takes it away. THIS IS THE ONE INTERACTION IN THE PROJECT
+  -- THAT CANNOT BE CHECKED WITHOUT REAPER — if it misfires in practice, the fix
+  -- is a minimum travel in pixels before a drag counts, and it belongs here.
   if ImGui.IsItemClicked(ctx, ImGui.MouseButton_Left) then
-    local mx, my = ImGui.GetMousePos(ctx)
-    local index, fret = layout.cellAt(computed, mx - ox, my - oy)
-    if index then
-      state.voicing = voicing.toggleFret(state.voicing, index, fret)
+    state.drag = index and { fret = fret, from = index, to = index } or nil
+  elseif state.drag and ImGui.IsItemActive(ctx) then
+    if index and fret == state.drag.fret then
+      state.drag.to = index
+    end
+  end
+
+  -- The mouse has come up: the button is no longer active and whatever the drag
+  -- collected is now the gesture.
+  if state.drag and not ImGui.IsItemActive(ctx) then
+    local drag = state.drag
+    state.drag = nil
+
+    if drag.to == drag.from then
+      state.voicing = voicing.toggleFret(state.voicing, drag.from, drag.fret)
       -- THE ONE PLACE THE FIELD IS WRITTEN FROM THE VOICING. The user was
       -- clicking, not typing, so there is no cursor to disturb and no
       -- half-finished word to normalise — and this is how a shape built by
       -- hand teaches its owner the chord string for it. See `chordField`.
       state.text = voicing.toText(state.voicing)
+    elseif drag.fret > voicing.OPEN then
+      -- A barre moves no finger, so the chord string is unchanged and the field
+      -- is deliberately NOT rewritten: there is nothing new for it to say, and
+      -- rewriting it would normalise text the user typed for no reason. A drag
+      -- across the row above the nut falls through here and does nothing —
+      -- there are no barres above the nut, and toggling several strings on a
+      -- gesture nobody defined would be inventing one.
+      state.voicing = voicing.setBarre(state.voicing, drag.fret, drag.from, drag.to)
     end
   end
 end

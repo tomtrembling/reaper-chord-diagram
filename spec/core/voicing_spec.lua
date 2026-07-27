@@ -323,6 +323,77 @@ describe("voicing", function()
     end)
   end)
 
+  describe("laying a barre across the strings", function()
+    it("records the fret and the strings the drag covered", function()
+      local F = assert(voicing.parse("133211", "F"))
+      assert.are.same({ { fret = 1, from = 1, to = 6 } }, voicing.setBarre(F, 1, 1, 6).barres)
+    end)
+
+    it("moves no finger, so barring a fret never flattens the shape above it", function()
+      -- An F is barred at the first fret with three fingers ABOVE the bar. If
+      -- the gesture also fretted the strings it covers, dragging the bar in
+      -- would drop those three fingers to the first fret and silently destroy
+      -- the chord. The bar says which strings one finger lies across; where the
+      -- other fingers are is not its business.
+      local F = assert(voicing.parse("133211", "F"))
+      local barred = voicing.setBarre(F, 1, 1, 6)
+      assert.are.equal("133211", voicing.toText(barred))
+      assert.are.same({}, F.barres)
+    end)
+
+    it("reads a drag the same whichever way across the neck it went", function()
+      -- Nobody drags in a fixed direction, and the barre a diagram draws is the
+      -- same span either way.
+      local F = assert(voicing.parse("133211", "F"))
+      assert.are.same(voicing.setBarre(F, 1, 1, 6).barres, voicing.setBarre(F, 1, 6, 1).barres)
+    end)
+
+    it("covers only the strings the drag reached, for a partial barre", function()
+      -- The common case, not an edge case: the small F bars the top two strings
+      -- only, and the diagram must not claim a finger across the whole neck.
+      local small = assert(voicing.parse("xx3211", "F"))
+      assert.are.same({ { fret = 1, from = 5, to = 6 } }, voicing.setBarre(small, 1, 5, 6).barres)
+    end)
+
+    it("keeps a barre at another fret, because a hand can hold two", function()
+      local B = assert(voicing.parse("x24442", "B"))
+      local both = voicing.setBarre(voicing.setBarre(B, 2, 2, 6), 4, 3, 5)
+      assert.are.same(
+        { { fret = 2, from = 2, to = 6 }, { fret = 4, from = 3, to = 5 } }, both.barres)
+    end)
+
+    it("redraws the barre at a fret rather than stacking a second one on it", function()
+      -- One finger per fret: dragging again across a fret that already carries a
+      -- bar is how a span drawn wrongly is corrected.
+      local F = assert(voicing.parse("133211", "F"))
+      local corrected = voicing.setBarre(voicing.setBarre(F, 1, 1, 6), 1, 5, 6)
+      assert.are.same({ { fret = 1, from = 5, to = 6 } }, corrected.barres)
+    end)
+
+    it("takes the barre away again, leaving the fingers where they were", function()
+      local F = voicing.setBarre(assert(voicing.parse("133211", "F")), 1, 1, 6)
+      local bare = voicing.setBarre(F, 1, nil, nil)
+      assert.are.same({}, bare.barres)
+      assert.are.equal("133211", voicing.toText(bare))
+    end)
+
+    it("appears only where the user asked for one, however barre-shaped the chord", function()
+      -- The PRD's rule, stated as a test so that a later helpful heuristic
+      -- fails here rather than in a diagram somebody trusted. Every one of
+      -- these is a textbook barre shape — six fingers on one fret included —
+      -- and not one of them may arrive carrying a bar nobody drew.
+      for _, text in ipairs({ "133211", "xx3211", "577655", "x-10-12-12-11-10" }) do
+        local v = assert(voicing.parse(text))
+        assert.are.same({}, v.barres, text)
+        assert.are.same({}, voicing.setFret(v, 1, 5).barres, text)
+        assert.are.same({}, voicing.toggleFret(v, 2, 3).barres, text)
+        assert.are.same({}, voicing.setName(v, "F").barres, text)
+        assert.are.same({}, assert(voicing.decode(voicing.encode(v))).barres, text)
+      end
+      assert.are.same({}, voicing.new().barres)
+    end)
+  end)
+
   describe("naming a chord", function()
     it("renames without rebuilding it, and asks for a new image", function()
       -- The name field cannot be routed through `parse`: a name is typed while
@@ -370,6 +441,24 @@ describe("voicing", function()
       assert.are.equal("x3201x", voicing.toText(voicing.toggleFret(C, 6, voicing.OPEN)))
     end)
 
+    it("takes a barre away when a cell it covers is clicked", function()
+      -- The removal gesture, and it cannot be confused with the one that
+      -- creates a barre: creating needs the pointer to travel across strings,
+      -- removing is a click that goes nowhere. Clicking the bar addresses the
+      -- bar, so the fingers under it are left exactly where they were.
+      local F = voicing.setBarre(assert(voicing.parse("133211", "F")), 1, 1, 6)
+      local cleared = voicing.toggleFret(F, 3, 1)
+      assert.are.same({}, cleared.barres)
+      assert.are.equal("133211", voicing.toText(cleared))
+    end)
+
+    it("still places a dot at the barred fret on a string the bar does not reach", function()
+      local small = voicing.setBarre(assert(voicing.parse("xx3211", "F")), 1, 5, 6)
+      local edited = voicing.toggleFret(small, 1, 1)
+      assert.are.same(small.barres, edited.barres)
+      assert.are.equal("1x3211", voicing.toText(edited))
+    end)
+
     it("lifts the finger off a fretted string clicked above the nut", function()
       -- The row above the nut says what a string does when nothing frets it, so
       -- clicking it is a claim about the string, not about the dot below.
@@ -396,10 +485,20 @@ describe("voicing", function()
       assert.are.equal(name, back.name)
     end)
 
-    it("keeps barres, which nothing draws yet", function()
+    it("keeps barres", function()
       local barres = { { fret = 1, from = 1, to = 6 }, { fret = 3, from = 2, to = 4 } }
       local v = voicing.new({ frets = { 1, 3, 3, 2, 1, 1 }, name = "F", barres = barres })
       assert.are.same(barres, assert(voicing.decode(voicing.encode(v))).barres)
+    end)
+
+    it("brings a dragged barre back when the item is reopened", function()
+      -- Apply and reopen, in the only two steps this side of REAPER: a barre
+      -- laid across the strings by hand is written to the item and read back
+      -- spanning the same strings at the same fret.
+      local dragged = voicing.setBarre(assert(voicing.parse("xx3211", "F")), 1, 5, 6)
+      local reopened = assert(voicing.decode(voicing.encode(dragged)))
+      assert.are.same({ { fret = 1, from = 5, to = 6 } }, reopened.barres)
+      assert.are.equal(voicing.fingerprint(dragged), voicing.fingerprint(reopened))
     end)
 
     it("keeps a base fret the user overrode", function()
@@ -461,6 +560,13 @@ describe("voicing", function()
       local barred = voicing.new({ frets = plain.frets, name = "F",
         barres = { { fret = 1, from = 1, to = 6 } } })
       assert.are_not.equal(voicing.fingerprint(plain), voicing.fingerprint(barred))
+    end)
+
+    it("changes when a barre covers different strings, because it is drawn shorter", function()
+      local F = assert(voicing.parse("133211", "F"))
+      assert.are_not.equal(
+        voicing.fingerprint(voicing.setBarre(F, 1, 1, 6)),
+        voicing.fingerprint(voicing.setBarre(F, 1, 5, 6)))
     end)
 
     it("is lowercase and free of separators, so it is safe as a filename", function()

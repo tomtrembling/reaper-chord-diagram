@@ -1,6 +1,6 @@
 --[[
 @description Chord Diagram
-@version 0.10.0
+@version 0.11.0
 @author Tom Trembling
 @about
   Capture a guitar chord voicing and pin its diagram to a point in the timeline,
@@ -20,6 +20,10 @@
     - Or click a cell to place a finger and click it again to remove it, click
       above the nut to ring a string open or mute it, and the chord string
       writes itself.
+    - Drag across the strings at a fret to lay a barre over them, as far as the
+      finger reaches — all six or only two. Click the bar to take it away. A
+      barre is only ever drawn because you drew it, and laying one moves no
+      finger you have already placed.
     - Type a name. It is drawn as the diagram's title and becomes the item's
       name, so the chord is findable in the Media Item Manager.
     - The first fret box says where the top of the grid sits. It fills itself
@@ -31,11 +35,15 @@
       the item, so it comes back already on the grid, and copying the item
       copies the chord with it.
 
-  Barres are the next slice. They cannot be written in a chord string, so
-  retyping the text of a chord that has one keeps it.
+  A barre cannot be written in a chord string, so retyping the text of a chord
+  that has one keeps it.
 
   Requires js_ReaScriptAPI and ReaImGui.
 @changelog
+  0.11.0 Barres, laid across the strings by dragging over them at a fret and
+        taken away by clicking the bar. Partial barres span exactly the strings
+        you dragged across. Nothing infers a barre and laying one moves no
+        finger, so a diagram never claims a fingering you did not choose.
   0.10.0 A text field for the chord string, synced both ways with the grid: type
         and the grid redraws, click and the text rewrites itself. Half-typed
         text changes nothing rather than complaining. A name field is back, and

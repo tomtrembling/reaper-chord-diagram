@@ -254,6 +254,60 @@ function M.setFret(v, index, fret)
   })
 end
 
+--- Lay a barre across the strings at a fret, or take one away.
+---
+--- THE BAR MOVES NO FINGER. It records which strings ONE finger lies flat
+--- across, and nothing else: an F is barred at the first fret with three
+--- fingers ABOVE the bar, so a gesture that also fretted the strings it covers
+--- would drop those three fingers to the first fret and destroy the chord the
+--- moment the user drew the bar in. Where the other fingers are is `M.setFret`'s
+--- business, and the two stay separate.
+---
+--- Nothing here infers anything either. A barre exists only because this
+--- function was called, which is the PRD's rule: the plugin must never draw a
+--- barre the user did not ask for, so that a diagram never claims a fingering
+--- they did not choose. There is deliberately no code anywhere that notices
+--- several fingers on one fret and helpfully draws a bar across them.
+---
+--- ONE BAR PER FRET. A second drag across a fret that already carries one
+--- replaces it rather than stacking a second bar on top, which is how a span
+--- drawn wrongly is corrected; frets are independent, so a hand holding two
+--- bars keeps both. `from` and `to` arrive in whatever order the drag went and
+--- are stored low string first, because the span a diagram draws is the same
+--- either way.
+---
+--- Passing nil for either end REMOVES the bar at that fret. Removal has to be
+--- possible without a gesture that could be mistaken for creating one — see
+--- `M.toggleFret`, which is where the click that calls this lives.
+---
+--- Returns a NEW voicing; the one passed in is untouched, as with `M.setFret`.
+--- @param v Voicing
+--- @param fret integer
+--- @param from integer|nil lowest string covered; nil removes the barre
+--- @param to integer|nil highest string covered
+--- @return Voicing
+function M.setBarre(v, fret, from, to)
+  local barres = {}
+  for _, b in ipairs(v.barres or {}) do
+    if b.fret ~= fret then
+      barres[#barres + 1] = b
+    end
+  end
+  if from and to then
+    barres[#barres + 1] =
+      { fret = fret, from = math.min(from, to), to = math.max(from, to) }
+  end
+  table.sort(barres, function(a, b) return a.fret < b.fret end)
+
+  return M.new({
+    frets = v.frets,
+    fingers = v.fingers,
+    barres = barres,
+    baseFret = v.baseFret,
+    name = v.name,
+  })
+end
+
 --- Rename the chord.
 ---
 --- Separate from `M.parse` on purpose, even though parsing can also carry a
@@ -301,6 +355,20 @@ function M.setBaseFret(v, base)
   })
 end
 
+--- The barre covering this string at this fret, if there is one.
+--- @param v Voicing
+--- @param fret integer
+--- @param index integer
+--- @return Barre|nil
+local function barreCovering(v, fret, index)
+  for _, b in ipairs(v.barres or {}) do
+    if b.fret == fret and index >= b.from and index <= b.to then
+      return b
+    end
+  end
+  return nil
+end
+
 --- Apply a click on the cell addressing this string and fret.
 ---
 --- A string is in one of three states — muted, open, or fretted — and the
@@ -315,14 +383,28 @@ end
 ---     string does when no finger is on it, so a click there is a statement
 ---     about the string rather than about the dot below it.
 ---
---- Two gestures, three states, and nothing is ever inferred. `fret` is whatever
---- `layout.cellAt` reported for the point clicked, so both `M.MUTED` and
---- `M.OPEN` arrive from the marker row and mean the same gesture.
+--- A CELL COVERED BY A BARRE IS THE EXCEPTION: clicking it takes the barre
+--- away and leaves every finger where it was. That is the removal gesture, and
+--- it is a click ON PURPOSE — a barre is CREATED by dragging across strings, so
+--- a gesture that goes nowhere cannot be mistaken for one that travels. The
+--- alternative was a modifier or the right button, which is a gesture nothing
+--- else in this window uses and which nobody would find. The cost is that the
+--- cells under a bar cannot place a dot until the bar is gone; the bar is the
+--- ink that is there, so a click on it addressing it is what direct
+--- manipulation means.
+---
+--- Three gestures, three states and a bar, and nothing is ever inferred.
+--- `fret` is whatever `layout.cellAt` reported for the point clicked, so both
+--- `M.MUTED` and `M.OPEN` arrive from the marker row and mean the same gesture.
 --- @param v Voicing
 --- @param index integer which string, 1 = low E
 --- @param fret integer as `layout.cellAt` reports it
 --- @return Voicing
 function M.toggleFret(v, index, fret)
+  if barreCovering(v, fret, index) then
+    return M.setBarre(v, fret, nil, nil)
+  end
+
   local current = v.frets[index]
   if fret <= M.OPEN then
     return M.setFret(v, index, current == M.OPEN and M.MUTED or M.OPEN)

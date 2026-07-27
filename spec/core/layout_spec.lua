@@ -47,6 +47,15 @@ local function cellOf(computed, dot)
   end
 end
 
+--- The body of the bar drawn for a barre: the rectangle running from the first
+--- string it covers to the last. Its rounded ends are separate primitives
+--- playing the same role, so the body is picked out by kind.
+local function barreBody(computed)
+  for _, p in ipairs(withRole(computed, "barre")) do
+    if p.kind == "rect" then return p end
+  end
+end
+
 --- The set of string positions carrying a marker of the given role.
 local function markedStrings(computed, role)
   local strings = withRole(computed, "string")
@@ -222,7 +231,8 @@ describe("layout", function()
 
   it("emits only backend-neutral primitives, in normalised coordinates", function()
     local kinds = { line = true, rect = true, circle = true, text = true }
-    for _, v in ipairs({ C, Bm }) do
+    local barred = voicing.setBarre(assert(voicing.parse("133211", "F")), 1, 1, 6)
+    for _, v in ipairs({ C, Bm, barred }) do
       for _, p in ipairs(layout.compute(v, 1024, 1024).primitives) do
         assert.is_true(kinds[p.kind], "unknown primitive kind: " .. tostring(p.kind))
         for _, field in ipairs({ "x", "y", "x1", "y1", "x2", "y2", "cx", "cy" }) do
@@ -239,6 +249,94 @@ describe("layout", function()
     local small = layout.compute(C, 128, 128).primitives
     local large = layout.compute(C, 4096, 4096).primitives
     assert.are.same(small, large)
+  end)
+
+  describe("barres", function()
+    local F = voicing.setBarre(assert(voicing.parse("133211", "F")), 1, 1, 6)
+
+    it("spans every string of a full barre, at the fret it was laid across", function()
+      local computed = layout.compute(F, 1024, 1024)
+      local strings = withRole(computed, "string")
+      local bar = barreBody(computed)
+
+      assert.is_table(bar)
+      assert.are.equal(strings[1].x1, bar.x)
+      assert.are.equal(strings[6].x1, bar.x + bar.w)
+      assert.are.equal(1, cellOf(computed, { cy = bar.y + bar.h / 2 }))
+    end)
+
+    it("stops at the last string a partial barre covers", function()
+      -- The small F bars the top two strings only. A bar drawn across the whole
+      -- neck would claim a finger the guitarist never put there.
+      local small = voicing.setBarre(assert(voicing.parse("xx3211", "F")), 1, 5, 6)
+      local computed = layout.compute(small, 1024, 1024)
+      local strings = withRole(computed, "string")
+      local bar = barreBody(computed)
+
+      assert.are.equal(strings[5].x1, bar.x)
+      assert.are.equal(strings[6].x1, bar.x + bar.w)
+      assert.is_true(bar.x > strings[4].x1)
+    end)
+
+    it("puts the bar in the cell of the window, not the cell of the fret number", function()
+      -- Slice 004's framing, applied to the bar: a Bm barred at the seventh
+      -- fret in a window based at seven belongs in the FIRST cell, level with
+      -- the dots on the strings it does not cover.
+      local barred = voicing.setBarre(Bm, 7, 2, 6)
+      local computed = layout.compute(barred, 1024, 1024)
+      local bar = barreBody(computed)
+
+      assert.are.equal(1, cellOf(computed, { cy = bar.y + bar.h / 2 }))
+      assert.are.equal(dotOn(computed, 2).cy, bar.y + bar.h / 2)
+    end)
+
+    it("follows the framing when the user reframes the diagram under it", function()
+      -- Framed from the fifth instead, the seventh fret is the third cell down
+      -- and the bar moves with everything else.
+      local barred = voicing.setBaseFret(voicing.setBarre(Bm, 7, 2, 6), 5)
+      local computed = layout.compute(barred, 1024, 1024)
+      assert.are.equal(3, cellOf(computed, { cy = barreBody(computed).y
+        + barreBody(computed).h / 2 }))
+    end)
+
+    it("draws no bar for a barre the window cannot show", function()
+      -- Same rule as a dot outside the window: what cannot be drawn in place is
+      -- not drawn at the edge instead.
+      local high = voicing.setBarre(assert(voicing.parse("x32010", "C")), 9, 1, 6)
+      assert.are.equal(0, #withRole(layout.compute(high, 1024, 1024), "barre"))
+    end)
+
+    it("draws no bar at all for a barre shape nobody barred", function()
+      local unbarred = assert(voicing.parse("133211", "F"))
+      assert.are.equal(0, #withRole(layout.compute(unbarred, 1024, 1024), "barre"))
+    end)
+
+    it("still draws the dots of the strings the bar covers", function()
+      -- The dot is a fact about the string and the bar a fact about the finger.
+      -- They coincide at this thickness, so the choice is invisible today — but
+      -- suppressing the dots would make the fretted strings disappear the day
+      -- the style pass thins the bar.
+      local computed = layout.compute(F, 1024, 1024)
+      assert.are.equal(6, #withRole(computed, "dot"))
+    end)
+
+    it("keeps drawing the bar while the chord string beside it is retyped", function()
+      -- The whole chain the window runs on every keystroke: parse the field
+      -- against the chord being edited, then draw whatever comes back. A chord
+      -- string cannot say "barred", so if parsing replaced the voicing instead
+      -- of merging into it the bar would vanish mid-word — and the user would
+      -- find out weeks later, in a diagram they trusted.
+      local edited = F
+      for n = 1, #"133214" do
+        local parsed = voicing.parse(("133214"):sub(1, n), nil, edited)
+        if parsed then edited = parsed end
+
+        local bar = barreBody(layout.compute(edited, 1024, 1024))
+        assert.is_table(bar)
+        assert.are.equal(withRole(layout.compute(edited, 1024, 1024), "string")[1].x1, bar.x)
+      end
+      assert.are.equal("133214", voicing.toText(edited))
+    end)
   end)
 
   describe("hit-testing", function()

@@ -355,9 +355,102 @@ module.
       there is no framing to offer — but a control whose arrows sometimes appear dead needs a
       guitarist's opinion. The alternative is to clamp to the nearest usable fret, which silently
       gives a framing that was not asked for. Say which reads better.
-- [ ] **Typing merges rather than replaces — and this is the one to take seriously.** It cannot be
-      seen yet, because nothing renders a barre until slice 008. It is specced
-      (`spec/core/voicing_spec.lua`, "preserves everything the text form cannot say"), and the
-      thing to watch for after slice 008 lands is: build a barre chord, nudge one string via the
-      TEXT field, and confirm the barre is still there. If the merge were ever lost, that is what
-      silent data loss would look like.
+- [x] ~~**Typing merges rather than replaces — and this is the one to take seriously.**~~ **Live as
+      of slice 008**, which renders the bar. The check is now written out in the slice 008 section
+      below ("A barre survives an edit to the chord string"); do it there rather than here.
+
+## Slice 008 — barres, entered by dragging
+
+Version 0.11.0. **This is the slice with the one interaction that could not be tested at all on the
+development machine.** Everything else this project does has either a spec or a shape on screen to
+compare against; telling a click apart from a drag has neither, because REAPER is not installed
+here. Read *The gesture* below before testing, so a misfire is reported as the specific thing it is.
+
+One new ReaImGui name is used: `IsItemActive`. As before, if that name is wrong it reports itself
+at load time — "This version of ReaImGui does not provide IsItemActive" — before the window opens.
+Note the ReaImGui version if it appears.
+
+### The gesture
+
+Both gestures open the same way, with the mouse going down on a cell, so the line between them is:
+
+* **Ended on the string it started on → a click.** Vertical wander does not matter, so a click that
+  slides up or down its own string is still a click.
+* **Ended on a DIFFERENT string of the same fret row → a drag**, and the bar spans from the string
+  it started on to the string it ended on.
+
+The fret is taken from the cell the drag started in and never moves, so wandering into another row
+mid-drag leaves the bar where it was.
+
+### Confirm on Windows
+
+- [ ] **Dragging across the strings at a fret draws a bar over them.** Type `133211`, then press on
+      the low E at the first fret, drag to the high E and release. Expect a solid bar with rounded
+      ends running the width of the grid in the first cell, with the dots at frets 3, 3 and 2 still
+      where they were.
+- [ ] **Laying a bar moves no finger.** In the same chord, the three fingers ABOVE the bar must not
+      drop to the first fret, and the chord string must still read `133211`. If the shape flattens,
+      that is silent data loss and a real defect.
+- [ ] **A partial barre spans only the strings dragged across.** Type `xx3211` and drag across the
+      first fret from the B string to the high E only. The bar must stop at the B string and not
+      reach the D or G strings. This is the common case, not an edge case.
+- [ ] **Dragging the other way works the same.** High E to low E must give the same bar as low E to
+      high E.
+- [ ] **Clicking the bar takes it away**, leaving every dot where it was. This is the removal
+      gesture; it is a click precisely because creating a barre needs the pointer to travel.
+- [ ] **Dragging again across a barred fret redraws the bar** rather than stacking a second one on
+      it — that is how a span drawn wrongly is corrected.
+- [ ] **A barre at a high position sits in the right cell.** Type `x79987`, drag across the SEVENTH
+      fret row (the first cell of the window, under the `7fr` marker) from the A string to the high
+      E. The bar must land in that first cell, level with the dots on the A and high E, not
+      seven cells down or off the diagram.
+- [ ] **The bar is in the exported PNG exactly as it is on screen.** Apply and look at the item.
+      Both are drawn from the same primitives — a rectangle plus a round cap at each end — so any
+      difference in length or position is the preview/output drift the architecture exists to
+      prevent, and is an issue rather than a tweak.
+- [ ] **A barre survives an edit to the chord string.** THE ONE TO TAKE SERIOUSLY, carried over
+      from slice 007. Build a barre chord, then nudge one string in the TEXT field — `133211` to
+      `133214`. The bar must still be there after every keystroke. It is specced end to end
+      (`spec/core/layout_spec.lua`, "keeps drawing the bar while the chord string beside it is
+      retyped"), so a failure here is in the window rather than in the merge.
+- [ ] **A barre survives apply and reopen.** Apply a barred chord, run the action on that item
+      again, and the bar must be back on the grid. Then save, close and reopen the project and
+      check once more. The storage format has carried barres since slice 005, so this needs no new
+      format — it is the first time anything has been able to SEE one.
+- [ ] **Two items with the same shape but different bars get different images.** Apply `133211`
+      barred across all six strings to one item and the same chord barred across the top two to
+      another. `chord-diagrams/` must gain two PNGs, not one.
+
+### Judgement calls to confirm
+
+- [ ] **Clicking the bar to remove it means those cells cannot place a dot while the bar is there.**
+      A click on a cell the bar covers addresses the bar. The alternative was a modifier or the
+      right mouse button, which is a gesture nothing else in this window uses and which nobody
+      would find. Say whether reaching for a dot under a bar and losing the bar instead happens in
+      practice.
+- [ ] **Dragging on a blank neck draws a bar with no dots under it.** Laying a bar moves no finger,
+      so a bar drawn on strings that are still muted shows a bar above six crosses, which looks
+      odd. This is the price of the guarantee in the second check above — the alternative, fretting
+      every string the bar covers, is what would flatten an F. If the empty state reads as broken,
+      the fix is to fret only the strings that are currently MUTED, which is a rule in
+      `core.voicing.setBarre` and a spec.
+- [ ] **A drag across the row above the nut does nothing.** There are no barres above the nut, and
+      making a sideways drag up there mute or ring several strings at once would be inventing a
+      gesture nobody asked for. Confirm doing nothing is right rather than surprising.
+- [ ] **A click near the midpoint between two strings does not accidentally draw a two-string
+      bar.** This is the residual risk in telling a click from a drag: the press has to land about
+      half a string gap off centre AND wobble across the boundary. If it happens in normal use, the
+      fix is a minimum travel in pixels before a drag counts, in `grid()` in
+      `src/adapter/imgui.lua`.
+
+### For the slice 011 style pass
+
+- [ ] **How the bar and the dots sit together.** The bar is a capsule exactly as thick as a dot,
+      and the dots of the strings it covers are still drawn, on top of it. At this thickness the
+      two coincide exactly, so the choice is invisible — it matters only if the style pass thins
+      the bar, hollows it, or gives it a different ink, at which point the dots underneath become
+      visible again. Decide then whether the dots under a bar should be suppressed. Suppressing
+      them now would make the fretted strings disappear the day the bar changes shape.
+- [ ] **The bar's ends.** Round caps, one dot-radius past the outermost string it covers, so a
+      full barre overhangs the grid by the same amount a dot does. Confirm that reads as a finger
+      rather than as a bar that has slipped off the neck.

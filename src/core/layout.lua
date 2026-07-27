@@ -145,6 +145,42 @@ function M.compute(v, width, height)
     })
   end
 
+  local dotR = g.stringGap * 0.34
+
+  -- Barres: one finger laid flat across several strings, drawn as a capsule
+  -- exactly as wide as the dots it stands in for — a rectangle from the first
+  -- string it covers to the last, with a round cap on each end. Three
+  -- primitives rather than one thick line because a line's END CAPS are the
+  -- backend's business: LICE squares them off and ImGui does not, and a bar
+  -- whose length differs between the preview and the PNG is precisely the drift
+  -- this module exists to prevent. A filled rect and a filled circle are drawn
+  -- identically by both.
+  --
+  -- Drawn BEFORE the dots, so a dot at a barred fret sits on top of the bar
+  -- rather than under it. Nothing is suppressed: the dot is a fact about the
+  -- string and the bar is a fact about the finger, and at this thickness they
+  -- coincide exactly, so the two are visually one shape. Should the style pass
+  -- ever thin the bar, the fretted strings must not silently vanish with it.
+  --
+  -- A bar outside the window is skipped, on the same rule as a dot outside it.
+  for _, b in ipairs(v.barres or {}) do
+    local cell = b.fret - g.baseFret + 1
+    local from, to = math.min(b.from, b.to), math.max(b.from, b.to)
+    if cell >= 1 and cell <= voicing.SPAN and from >= 1 and to <= v.strings then
+      local x1, x2, cy = stringX(g, from), stringX(g, to), cellY(g, cell)
+      add({
+        kind = "rect", role = "barre", colour = "ink",
+        x = x1, y = cy - dotR, w = x2 - x1, h = dotR * 2,
+      })
+      for _, x in ipairs({ x1, x2 }) do
+        add({
+          kind = "circle", role = "barre", colour = "ink", filled = true,
+          cx = x, cy = cy, r = dotR,
+        })
+      end
+    end
+  end
+
   -- Dots, one per fretted string, positioned relative to the top of the WINDOW
   -- rather than the nut, so that a high-position voicing lands in the same five
   -- cells an open chord does.
@@ -152,7 +188,6 @@ function M.compute(v, width, height)
   -- A fret outside the window is skipped. That only happens for a shape wider
   -- than the five frets the span allows, which no framing can show whole; the
   -- alternative is a dot painted off the edge of the diagram.
-  local dotR = g.stringGap * 0.34
   for s = 1, v.strings do
     local fret = v.frets[s]
     local cell = fret - g.baseFret + 1
