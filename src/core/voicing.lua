@@ -209,6 +209,67 @@ function M.baseFret(v)
   return lowest
 end
 
+--- Move one string to a fret, leaving the rest of the chord alone.
+---
+--- Returns a NEW voicing; the one passed in is untouched. That is what makes
+--- "Cancel leaves the item unchanged" structurally true rather than a promise
+--- the UI has to keep: the voicing read off the item is never written to, so
+--- there is nothing to put back.
+---
+--- Everything the text form cannot express — barres, finger numbers, the name —
+--- is carried across, for the same reason `M.parse` merges rather than
+--- replaces. A base-fret override is carried only while it still frames the
+--- chord; see `M.baseFret`.
+--- @param v Voicing
+--- @param index integer which string, 1 = low E
+--- @param fret integer `M.MUTED`, `M.OPEN`, or a fret number
+--- @return Voicing
+function M.setFret(v, index, fret)
+  local frets = {}
+  for i = 1, v.strings do
+    frets[i] = v.frets[i]
+  end
+  if index >= 1 and index <= v.strings then
+    frets[index] = fret
+  end
+  return M.new({
+    frets = frets,
+    fingers = v.fingers,
+    barres = v.barres,
+    baseFret = M.canFrame(frets, v.baseFret) and v.baseFret or nil,
+    name = v.name,
+  })
+end
+
+--- Apply a click on the cell addressing this string and fret.
+---
+--- A string is in one of three states — muted, open, or fretted — and the
+--- diagram has two places to click, which between them reach all three:
+---
+---   * A CELL OF THE GRID places a dot at that fret, and clicking the same cell
+---     again clears it back to MUTED. Muted rather than open, because deleting a
+---     dot must not silently claim the string is sounded; only the row above the
+---     nut says that.
+---   * THE ROW ABOVE THE NUT toggles the string between open and muted, and
+---     rings a fretted string open — that row is where a diagram says what a
+---     string does when no finger is on it, so a click there is a statement
+---     about the string rather than about the dot below it.
+---
+--- Two gestures, three states, and nothing is ever inferred. `fret` is whatever
+--- `layout.cellAt` reported for the point clicked, so both `M.MUTED` and
+--- `M.OPEN` arrive from the marker row and mean the same gesture.
+--- @param v Voicing
+--- @param index integer which string, 1 = low E
+--- @param fret integer as `layout.cellAt` reports it
+--- @return Voicing
+function M.toggleFret(v, index, fret)
+  local current = v.frets[index]
+  if fret <= M.OPEN then
+    return M.setFret(v, index, current == M.OPEN and M.MUTED or M.OPEN)
+  end
+  return M.setFret(v, index, current == fret and M.MUTED or fret)
+end
+
 --- The lowest fret that cannot be written as a single character.
 local TWO_DIGIT = 10
 

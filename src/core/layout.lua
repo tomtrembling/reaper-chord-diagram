@@ -212,9 +212,12 @@ end
 --- were passed to `compute`. The geometry comes from the same `grid` the
 --- primitives were drawn from, so a click lands on exactly what is displayed.
 ---
---- Returns the string index (1 = low E) and the absolute fret, where 0 means
---- the open/muted row above the nut. Returns nil for a point outside the
---- diagram.
+--- Returns the string index (1 = low E) and the absolute fret. Inside the grid
+--- that is the fret the cell stands for; on the row above the top of the window
+--- it is `voicing.OPEN` or `voicing.MUTED`, whichever that string is currently
+--- marked with. Every marker the diagram draws therefore maps back to the
+--- string and the position it was drawn for. Returns nil for a point outside
+--- the diagram.
 --- @param computed { width: number, height: number, voicing: Voicing }
 --- @param x number
 --- @param y number
@@ -239,8 +242,14 @@ function M.cellAt(computed, x, y)
     return index, offset + g.baseFret - 1
   end
 
+  -- The row above the top of the window. It holds one marker per string and
+  -- which marker that is depends on the chord, so the row answers with the
+  -- state the string is actually in: a cross reports MUTED and a ring reports
+  -- OPEN, and a string with a dot below reports OPEN because that is what the
+  -- empty space up there would become. Every marker the layout draws therefore
+  -- maps back to the string and fret it was drawn for, crosses included.
   if ny >= g.markerY - g.fretGap / 2 and ny < g.top then
-    return index, voicing.OPEN
+    return index, v.frets[index] == voicing.MUTED and voicing.MUTED or voicing.OPEN
   end
 
   return nil

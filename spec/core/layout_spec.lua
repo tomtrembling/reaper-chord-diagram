@@ -276,6 +276,45 @@ describe("layout", function()
       assert.are.equal(voicing.OPEN, hitFret)
     end)
 
+    it("maps a muted cross back to the string it was drawn for, and to muted", function()
+      for s = 1, 6 do
+        local frets = { 0, 0, 0, 0, 0, 0 }
+        frets[s] = voicing.MUTED
+        local computed = layout.compute(voicing.new({ frets = frets }), 800, 600)
+        local cross = withRole(computed, "muted")[1]
+        local hitString, hitFret = layout.cellAt(computed,
+          centreX(cross) * 800, (cross.y1 + cross.y2) / 2 * 600)
+        assert.are.equal(s, hitString)
+        assert.are.equal(voicing.MUTED, hitFret)
+      end
+    end)
+
+    it("maps every marker of a whole chord back to the string and fret it states", function()
+      -- The round trip the grid's clicking rests on: whatever the layout drew
+      -- for a string — a dot, a ring or a cross — clicking it addresses that
+      -- same string and reports the position it is in.
+      for _, v in ipairs({ C, Bm, assert(voicing.parse("x-0-9-9-7-x", "A")) }) do
+        local computed = layout.compute(v, 800, 600)
+        local seen = {}
+        for _, p in ipairs(computed.primitives) do
+          if p.role == "dot" or p.role == "open" or p.role == "muted" then
+            local px = centreX(p) * 800
+            local py = (p.cy or (p.y1 + p.y2) / 2) * 600
+            local hitString, hitFret = layout.cellAt(computed, px, py)
+            assert.are.equal(v.frets[hitString], hitFret,
+              string.format("%s marker on string %s", p.role, tostring(hitString)))
+            seen[hitString] = true
+          end
+        end
+
+        -- And every string says something, so the round trip covers the chord
+        -- rather than whichever markers happened to be drawn.
+        for s = 1, v.strings do
+          assert.is_true(seen[s] or false, "no marker on string " .. s)
+        end
+      end
+    end)
+
     it("reports nothing for a point outside the diagram", function()
       local computed = layout.compute(C, 1024, 1024)
       assert.is_nil(layout.cellAt(computed, 0, 0))

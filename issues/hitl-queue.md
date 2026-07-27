@@ -174,3 +174,118 @@ a spec.
       the dots off the diagram: it frames from the seventh and still draws an open ring above the A
       string. That is how songbooks notate it, but it is a judgement call — confirm it reads
       correctly rather than looking like a mistake.
+
+## Slice 006 — the ImGui window with a clickable grid
+
+Version 0.9.0. **The native input dialog is gone.** Running the action now opens a window with a
+fretboard grid; there is no text field and no name field until slice 007, so several slice 003, 004
+and 005 checks above can no longer be performed as written — see *Checks above that this slice
+invalidates* at the end of this section before working the queue.
+
+This is the first slice whose main deliverable cannot be executed at all on the development
+machine. Nothing below has been run; `make verify` only parses it.
+
+### The one that decides whether anything else can be checked
+
+- [ ] **THE WINDOW OPENS.** If it does not, this is the first thing to look at, because the binding
+      is a guess made from documentation rather than from a running REAPER.
+
+      ReaImGui changed how a script reaches it at version 0.9. `src/adapter/imgui.lua` tries the
+      current documented way first —
+
+      ```lua
+      package.path = reaper.ImGui_GetBuiltinPath() .. '/?.lua'
+      local ImGui = require 'imgui' '0.9'
+      ```
+
+      — detected by whether `ImGui_GetBuiltinPath` exists, since that function arrived with the
+      shim in 0.9. If it does not exist, the module falls back to the pre-0.9 style of calling
+      `reaper.ImGui_*` directly, building the same table by hand and calling the constant getters
+      (`reaper.ImGui_Key_Escape()`) that the newer API exposes as plain values. Everything else in
+      the project talks to that one table and cannot tell which style won.
+
+      **Telling the two failures apart from the symptom:**
+
+      | What you see | What it means |
+      | --- | --- |
+      | "This action needs ReaImGui" | ReaImGui is not installed at all. Install it via ReaPack. |
+      | "ReaImGui cannot provide API version 0.9" | The install predates 0.9 *and* the fallback was not taken — report the ReaImGui version. |
+      | "This version of ReaImGui does not provide *name*" | The fallback was taken and that install is too old for that call. Report the name and the version. |
+      | "ReaImGui's shim could not be loaded" | `imgui.lua` is missing from `Scripts/ReaTeam Extensions/API/`. Reinstall ReaImGui through ReaPack. |
+      | Nothing happens, no message, no window | The binding resolved but a call inside the frame failed. Open the ReaScript console (Actions > Show console output) and paste whatever is there into the issue. |
+
+      The version asked for is `0.9`, not the newest, deliberately: the shim exists so a script can
+      name an older API and still run on newer installs. `M.API_VERSION` in
+      `src/adapter/imgui.lua` is the one place to change it.
+
+      **Please record the ReaImGui version installed on the test machine either way**, pass or
+      fail. It is the fact that would have made this a decision rather than a guess.
+
+### Confirm on Windows
+
+- [ ] **The grid looks like the exported PNG.** Both are drawn from the same primitive list, so
+      any difference in *geometry* is a real bug. Two differences are expected and are not bugs:
+      the on-screen title and fret marker use the ImGui window font at its own size rather than
+      the size the layout asks for, so they read smaller than in the image; and the on-screen
+      ring above an open string is a stroked circle where the PNG punches a white disc out of a
+      black one. Anything else that differs — spacing, dot positions, which fret a dot is in — is
+      the drift this architecture exists to prevent, so raise it as an issue.
+- [ ] **A click lands on the cell it appears to land on.** Click the third fret of the A string;
+      the dot must appear under the pointer, not one cell out. Check the top and bottom cells and
+      both outer strings especially, since an off-by-one in the hit test shows up at the edges
+      first. The round trip is specced (`spec/core/layout_spec.lua`), but only the specs' idea of
+      where the mouse is — this confirms ImGui's idea agrees.
+- [ ] **Clicking a cell places a dot and clicking it again removes it**, leaving that string
+      MUTED (a cross above the nut), not open. That is a deliberate choice — see the judgement
+      call below.
+- [ ] **Clicking above the nut toggles a string between open and muted**, and clicking above the
+      nut on a string that has a dot lifts the dot and rings the string open.
+- [ ] **Apply writes the chord and closes the window** in one press.
+- [ ] **Cancel closes the window and the item is untouched** — no new PNG in `chord-diagrams/`, no
+      change to the item, and nothing on the undo stack to press Ctrl+Z through.
+- [ ] **Escape closes the window**, same as Cancel. The window must have focus for ImGui to see
+      the key; if Escape only works when the window is focused that is correct behaviour, not a
+      bug.
+- [ ] **The window can be resized and the grid follows.** The grid is recomputed from the window's
+      available space every frame, so it should stay square and stay clickable at any size. Drag
+      it small: below a floor the grid stops shrinking and the buttons scroll, which is intended.
+- [ ] **Running the action on an item that already carries a chord opens the grid already filled
+      in**, and the title of the window's diagram is the name that chord already had.
+- [ ] **Two runs in a row do not leave a window behind.** The lifecycle is one-shot: the loop stops
+      deferring after Apply, Cancel or Escape, and ReaImGui destroys a context that stops being
+      used. If a ghost window survives, say so — the pre-0.9 fallback path had an explicit
+      `DestroyContext` that the current API removed, and this code deliberately calls neither.
+
+### Judgement calls to confirm
+
+- [ ] **Clearing a dot returns the string to MUTED rather than OPEN.** Clicking a dot off is a
+      deletion, and muted is the state that claims nothing: a string is not sounded until the user
+      says so above the nut. The alternative — clearing to open — would silently add a ringing
+      string to the diagram every time a finger is removed. Confirm this reads correctly to a
+      guitarist; if clearing to open feels more natural in practice, that is a one-line change in
+      `core.voicing.toggleFret` and a spec.
+- [ ] **A NEW CHORD IS NAMED WITH ITS OWN CHORD STRING UNTIL SLICE 007.** The name came from the
+      native input dialog, which this slice removes, and the name field is slice 007. Rather than
+      keep a dialog in front of the window for one field, a chord created in this version falls
+      back to the rule that was already there for an unnamed chord: the title is its chord string,
+      so `x32010` is titled "x32010". Reopening a chord that already has a name keeps that name, so
+      nothing already applied loses its title. **This is a known one-slice gap, not a defect** —
+      please do not raise it as a bug, but do say if titling by chord string is actually preferable
+      to a free-text default.
+
+### Checks above that this slice invalidates
+
+Work these with the new UI in mind rather than skipping them:
+
+- Anything that says "type `x32010`" is now "click the shape in". The expected diagram is
+  unchanged, so the check still means something.
+- **Slice 004's "the dialog still fits with the longer chord label"** — dead. There is no dialog.
+- **Slice 004's "a comma-separated chord cannot be typed into this dialog"** — dead for the same
+  reason; the text field in slice 007 will have its own box and no comma problem.
+- **Slice 005's "a name with a comma still round-trips"** — cannot be performed until slice 007
+  gives the name a field. The storage escaping it was testing is specced, so it is a deferral
+  rather than a loss.
+- Every slice 004 check that needs a high-position chord (`x79987`, `10-12-12-11-10-10`,
+  `12-14-14-13-12-12`) can still be entered by clicking, but the grid only shows five frets at a
+  time and the framing follows the shape, so build the shape from its lowest fretted note upward.
+  If that turns out to be unreasonably fiddly by hand, do those checks after slice 007 instead.

@@ -209,6 +209,62 @@ describe("voicing", function()
     end)
   end)
 
+  describe("editing one string", function()
+    it("moves that string and leaves the others where they were", function()
+      local C = assert(voicing.parse("x32010", "C"))
+      assert.are.equal("x32013", voicing.toText(voicing.setFret(C, 6, 3)))
+    end)
+
+    it("leaves the chord it was given untouched, so backing out restores nothing", function()
+      local C = assert(voicing.parse("x32010", "C"))
+      voicing.setFret(C, 6, 3)
+      assert.are.equal("x32010", voicing.toText(C))
+    end)
+
+    it("keeps the barre and the name, which one string's position does not touch", function()
+      local F = voicing.new({
+        frets = { 1, 3, 3, 2, 1, 1 },
+        name = "F",
+        barres = { { fret = 1, from = 1, to = 6 } },
+      })
+      local edited = voicing.setFret(F, 3, 5)
+      assert.are.equal("F", edited.name)
+      assert.are.same(F.barres, edited.barres)
+    end)
+  end)
+
+  describe("clicking a cell of the grid", function()
+    it("places a dot where there was none", function()
+      local blank = voicing.new()
+      assert.are.equal("xxx2xx", voicing.toText(voicing.toggleFret(blank, 4, 2)))
+    end)
+
+    it("clears the dot when the same cell is clicked again, back to muted", function()
+      -- Muted, not open. Deleting a dot must not claim the string is sounded:
+      -- the ring above the nut says that, and only a click up there means it.
+      local placed = voicing.toggleFret(voicing.new(), 4, 2)
+      assert.are.equal("xxxxxx", voicing.toText(voicing.toggleFret(placed, 4, 2)))
+    end)
+
+    it("rings a muted string open when the row above the nut is clicked", function()
+      local blank = voicing.new()
+      local rung = voicing.toggleFret(blank, 1, voicing.MUTED)
+      assert.are.equal(voicing.OPEN, rung.frets[1])
+    end)
+
+    it("mutes an open string when the row above the nut is clicked", function()
+      local C = assert(voicing.parse("x32010", "C"))
+      assert.are.equal("x3201x", voicing.toText(voicing.toggleFret(C, 6, voicing.OPEN)))
+    end)
+
+    it("lifts the finger off a fretted string clicked above the nut", function()
+      -- The row above the nut says what a string does when nothing frets it, so
+      -- clicking it is a claim about the string, not about the dot below.
+      local C = assert(voicing.parse("x32010", "C"))
+      assert.are.equal("x32000", voicing.toText(voicing.toggleFret(C, 5, voicing.OPEN)))
+    end)
+  end)
+
   describe("storing a voicing", function()
     it("decodes back to the shape it was encoded from", function()
       local v = assert(voicing.parse("x32010", "C"))
