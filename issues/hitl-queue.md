@@ -454,3 +454,108 @@ mid-drag leaves the bar where it was.
 - [ ] **The bar's ends.** Round caps, one dot-radius past the outermost string it covers, so a
       full barre overhangs the grid by the same amount a dot does. Confirm that reads as a finger
       rather than as a bar that has slipped off the neck.
+
+## Slice 009 — errors, dependency checks and the diagnostic action
+
+Version 0.12.0, and **the package now installs TWO actions**: `Chord Diagram` and
+`Chord Diagram: copy diagnostics` (`Chord Diagram/chord_diagram_diagnostics.lua`).
+
+**Do this section FIRST when working the queue**, before the slice 003–008 checks. Everything else
+in this file is a check that produces a symptom; this is the thing that turns a symptom into a
+report. Run the diagnostic action once at the start and paste its output into the notes, then again
+after anything that fails.
+
+### Packaging — for the orchestrator, not the tester
+
+- [ ] **The second action needs an index entry.** `make index` was not run and nothing was pushed,
+      per the standing brief. `chord_diagram_diagnostics.lua` carries a full ReaPack header
+      (`@description Chord Diagram: copy diagnostics`, `@version 0.12.0`, `@about`, `@changelog`) so
+      `reapack-index` should pick it up as a second package in the `Chord Diagram` category with no
+      hand editing. Confirm it appears in `index.xml` and that ReaPack offers both actions.
+- [ ] **Both actions need `src/` on the same terms.** The new script carries a COPY of the entry
+      script's module bootstrap rather than sharing one — a module that finds the modules would have
+      to be found first, and this action must still work on an install where the other one does not.
+      Whatever `src/` layout the packaging decision settles on, both scripts see it identically.
+
+### The one that decides whether the rest of the queue can be reported
+
+- [ ] **THE DIAGNOSTIC ACTION RUNS AND ITS OUTPUT IS ON THE CLIPBOARD.** Run it, paste the result.
+      Expect a report with four sections — Versions, Paths, State, Last error. If nothing reaches
+      the clipboard the report is still printed to the ReaScript console (Actions > Show console
+      output), and the message box says which of the two happened. **Say which one you got.**
+
+      The clipboard goes through SWS's `CF_SetClipboard` if SWS is installed, and otherwise through
+      ReaImGui's `SetClipboardText`, which needs a context this action creates without ever opening
+      a window. ReaImGui's source says that call has no frame guard and that an unused context
+      disposes of itself, so this should be legal — but it has never been run. **If the console
+      fallback fires on a machine that has ReaImGui, that is the interesting failure**, and the
+      lines to look at are `viaImGui` in `src/adapter/clipboard.lua`.
+
+### Confirm on Windows
+
+- [ ] **Every refusal says the right thing.** Five cases, each of which must leave the item exactly
+      as it was and add nothing to the undo stack:
+      no item selected; three items selected (must say "3 are selected", not "that is not an empty
+      item"); one audio or MIDI item selected; an unsaved project; and — if you can arrange it — an
+      extension uninstalled.
+- [ ] **Two audio items selected complains about the COUNT, not the type.** This is the ordering the
+      old code got wrong and the reason the decision moved into `core.preflight`.
+- [ ] **The last error in the report is the message you just saw.** Trigger any refusal, then run
+      the diagnostic action: the Last error line must be that message with the timestamp of when it
+      happened. It persists across a REAPER restart, so an error from a previous session shows up
+      with an old timestamp rather than vanishing — that is deliberate, but say if it confuses.
+- [ ] **The report names the ReaImGui version.** The Versions line should read something like
+      `ReaImGui  0.9.3.2 (versioned binding, API 0.9 requested, Dear ImGui 1.89.9)`. This is the
+      fact every slice since 006 has asked for and never got. **Record it in the queue notes even if
+      everything works.**
+- [ ] **The Paths section resolves to real files.** In particular `Modules` — which of the two
+      candidate `src/` roots ReaPack actually installed to — and `ReaImGui shim`. A path that reads
+      `unknown` where a file should be is a packaging failure, not a diagnostic one.
+- [ ] **"Would run now" agrees with what the action does.** With one empty item selected it says
+      `yes`; with nothing selected it says `no` and the refusal. It is computed by the same function
+      the action refuses with, so a disagreement is a real defect.
+
+### Version floors — the numbers that could not be checked here
+
+- [ ] **REAPER 6.44 is the right floor.** `core.version.MIN_REAPER` refuses anything older, and the
+      number is inherited from ReaImGui's own stated host requirement rather than measured: REAPER
+      is not installed on the development machine. **The failure to watch for is it being too HIGH**
+      — a working install refused with "This action needs REAPER 6.44 or newer". If the tester's
+      REAPER is 7.x this check proves nothing, so it stays open; if anyone reports the refusal on a
+      REAPER that runs ReaImGui fine, lower it.
+- [ ] **js_ReaScriptAPI has NO version floor, by choice.** It is checked function by function
+      instead — `JS_LICE_CreateBitmap`, `JS_LICE_Clear`, `JS_LICE_FillRect`, `JS_LICE_FillCircle`,
+      `JS_GDI_CreateFont`, `JS_LICE_CreateFont`, `JS_LICE_SetFontFromGDI`, `JS_LICE_DrawText`,
+      `JS_LICE_WritePNG`, the list `adapter.lice` calls unguarded — because a version number would
+      have been invented on a machine that cannot run REAPER, whereas the list can be read off the
+      code. A missing one is named in the refusal. Confirm the report's `js_ReaScriptAPI` version
+      line is populated at all: it comes from `JS_ReaScriptAPI_Version()`, which is guarded and will
+      read "installed, version unknown" if that name is wrong.
+
+### The failure nobody can stage — read before deciding it is fine
+
+- [ ] **A write that half-succeeds is rolled back.** If `SetItemStateChunk` succeeds and the
+      extended-state write then fails, the item would carry the new diagram and the old voicing —
+      the one state the design forbids, since the item's data is the source of truth and the PNG is
+      a derivative. `adapter.item.writeChord` now puts the original chunk back and says so. **There
+      is no way to make REAPER refuse that second write on purpose**, so this is verified only by a
+      throwaway harness on the dev machine. If a user ever reports "the chord could not be attached
+      to the item", the item should be exactly as it was; check that rather than the mechanism.
+- [ ] **`asUndoableEdit` now wraps its work in a pcall** so `Undo_EndBlock` always runs. An error
+      between begin and end would otherwise leave an undo block open for the rest of the session,
+      quietly collecting the user's next edits under a chord's label. Nothing to test directly;
+      noted so a later slice does not "simplify" the pcall away.
+
+### Judgement calls to confirm
+
+- [ ] **The last error is never cleared on success.** An intermittent failure the user got past on
+      the second try is exactly the one worth reporting, so a successful run does not erase it; the
+      timestamp is what says whether the error is the one being described. The cost is that a report
+      run weeks later still carries an old error. Say if that reads as alarming rather than as
+      history.
+- [ ] **A host that will not report its version is allowed to run.** `GetAppVersion` failing is
+      treated as unknown rather than as too old, on the grounds that a reporting gap must not become
+      a plugin that refuses to start. The report says `unknown` on that line.
+- [ ] **The report includes the raw stored voicing** of the selected item (`Chord on item`). It is
+      the encoded token, not a chord string — it is there because it is the fact that says whether
+      persistence worked, and it decodes by eye. Say if it is noise.

@@ -24,17 +24,19 @@
 --- `CONSTANTS` below and checked at load time, so a name this file gets wrong
 --- fails with a message saying which one rather than somewhere deep in a frame.
 local layout = require("core.layout")
+local version = require("core.version")
 local voicing = require("core.voicing")
 
 local M = {}
 
 --- The ReaImGui API version this backend is written against.
 ---
---- Not the newest one. The shim exists precisely so a script can name an older
---- API and keep working on newer installs, so naming the version that
---- introduced the shim itself asks for the widest set of installs that can
---- answer. Raising this buys nothing until a call below needs it.
-M.API_VERSION = "0.9"
+--- Not the newest one, and NOT A NUMBER THIS FILE OWNS: it is the plugin's
+--- ReaImGui floor, declared once in `core.version` and read here. The number
+--- the shim is asked for and the number the diagnostic report calls the minimum
+--- have to be the same number, or the report is fiction. The reasoning for the
+--- value is with the constant.
+M.API_VERSION = version.MIN_REAIMGUI
 
 --- Every ReaImGui function this backend calls. Nothing else may be used.
 local FUNCTIONS = {
@@ -164,7 +166,7 @@ end
 --- and the shim's own `require` should happen once per action either way.
 --- @return table|nil api
 --- @return string|nil err
-local resolved, resolveError
+local resolved, resolveError, resolvedStyle
 function M.binding()
   if resolved then
     return resolved, nil
@@ -174,8 +176,10 @@ function M.binding()
   end
 
   local api, err = versioned()
+  resolvedStyle = api and "versioned" or nil
   if not api and not err then
     api, err = flat()
+    resolvedStyle = api and "flat" or nil
   end
   if not api then
     resolveError = err or
@@ -194,6 +198,51 @@ function M.binding()
 
   resolved = api
   return resolved, nil
+end
+
+--- What happened when the binding was resolved, for the diagnostic report.
+---
+--- The window failing to open is the failure this project can least afford and
+--- least easily reproduce — the developer cannot run REAPER at all — so the
+--- three facts that tell its causes apart are reported: WHICH binding style was
+--- taken, which API version was asked for, and the message if neither style
+--- worked. Between them they distinguish "ReaImGui is not installed" from "the
+--- install predates the shim" from "the shim is there but too old for a call
+--- this window makes", which is exactly the table in the slice 006 queue.
+---
+--- Calling this RESOLVES the binding, shim require and all. That is the point:
+--- the diagnostic runs the same code the window runs, so it reports what would
+--- actually happen rather than what ought to.
+---
+--- `GetVersion` answers three values in this order: Dear ImGui's version, its
+--- numeric form, and REAIMGUI'S OWN VERSION LAST. Checked against ReaImGui's
+--- published source rather than remembered, because taking the first return
+--- would have reported Dear ImGui's version as ReaImGui's — a plausible-looking
+--- number that is not the one anybody needs. It takes no context and predates
+--- the shim, so it answers on every install this plugin supports; older ones
+--- report "unknown" rather than raising, since a diagnostic must not fail.
+--- @return { installed: boolean, style: string|nil, requested: string,
+---           version: string|nil, dearImGui: string|nil, error: string|nil }
+function M.describe()
+  local api, err = M.binding()
+  local about = {
+    installed = reaper.APIExists("ImGui_CreateContext"),
+    style = resolvedStyle,
+    requested = M.API_VERSION,
+    error = err,
+  }
+
+  if api then
+    local ok, dear, _, own = pcall(function() return api.GetVersion() end)
+    if ok and type(own) == "string" and own ~= "" then
+      about.version = own
+    end
+    if ok and type(dear) == "string" and dear ~= "" then
+      about.dearImGui = dear
+    end
+  end
+
+  return about
 end
 
 --------------------------------------------------------------------------------

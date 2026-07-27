@@ -54,4 +54,30 @@ function M.exists(path)
   return reaper.file_exists(path)
 end
 
+--- How many diagrams are in the project's image folder?
+---
+--- For the diagnostic report. A resolved path is only half an answer — "the
+--- images are in this folder" and "this folder is empty" are different reports,
+--- and the second is the one that explains an item showing no picture.
+---
+--- Guarded and capped: a diagnostic must not be able to hang or throw, and a
+--- folder somebody has put ten thousand files in is not worth counting exactly.
+--- @param dir string the project directory
+--- @return integer|nil count nil if the folder could not be read
+function M.imageCount(dir)
+  local folder = dir .. M.SEP .. M.FOLDER
+  local count = 0
+  for i = 0, 9999 do
+    local ok, name = pcall(reaper.EnumerateFiles, folder, i)
+    if not ok then
+      return nil
+    end
+    if name == nil or name == "" then
+      return count
+    end
+    count = count + 1
+  end
+  return count
+end
+
 return M

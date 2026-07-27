@@ -88,17 +88,64 @@ function M.setStoredVoicing(item, encoded)
   return reaper.GetSetMediaItemInfo_String(item, M.VOICING_KEY, encoded, true) and true or false
 end
 
+--- Write the chord to the item: the state chunk, then the extended state.
+---
+--- ORDER MATTERS, AND IT IS NOT ARBITRARY — see the note on `M.setChunk`. The
+--- chunk goes first because REAPER serialises extended state into that same
+--- chunk, so a chunk captured before the voicing was stored would undo the
+--- store on its way in.
+---
+--- WHICH LEAVES THE QUESTION THIS FUNCTION EXISTS TO ANSWER: what if the SECOND
+--- write fails? The first has already landed, so the item would carry the new
+--- picture and the old data — the one state the whole design forbids, since the
+--- item's data is the source of truth and the PNG is a derivative. A user
+--- reopening that item would be shown a chord that is not the one displayed on
+--- it, and applying would then overwrite the picture from the stale voicing.
+---
+--- So the first write is PUT BACK. `original` is the chunk exactly as it was
+--- read before the window opened, so restoring it returns the item to the state
+--- the user last saw. Both writes are inside one undo block either way, so the
+--- rollback is not visible as an edit and there is nothing extra to Ctrl+Z
+--- through.
+--- @param item userdata
+--- @param original string the chunk as it was before this edit
+--- @param updated string the chunk to write
+--- @param encoded string the voicing to store
+--- @return boolean ok
+--- @return string|nil err
+function M.writeChord(item, original, updated, encoded)
+  if not M.setChunk(item, updated) then
+    return false, "REAPER refused the updated item state."
+  end
+  if not M.setStoredVoicing(item, encoded) then
+    M.setChunk(item, original)
+    return false, "REAPER refused the item's chord data, so the diagram was "
+      .. "put back as it was rather than left on an item that no longer "
+      .. "carries the voicing that produced it."
+  end
+  return true
+end
+
 --- Run `fn` as one undoable edit, so a chord behaves like any other REAPER
 --- edit under Ctrl+Z.
+---
+--- `fn` IS CALLED INSIDE A pcall so that `Undo_EndBlock` always runs. An error
+--- thrown between the two would otherwise leave REAPER with an undo block open
+--- for the rest of the session, quietly collecting the user's next edits into
+--- a block labelled after a chord — a failure that outlives the action that
+--- caused it and does not look like it came from here.
 --- @param label string
 --- @param fn fun(): boolean, string|nil
 --- @return boolean ok
 --- @return string|nil err
 function M.asUndoableEdit(label, fn)
   reaper.Undo_BeginBlock()
-  local ok, err = fn()
+  local completed, ok, err = pcall(fn)
   reaper.Undo_EndBlock(label, -1)
   reaper.UpdateArrange()
+  if not completed then
+    return false, tostring(ok)
+  end
   return ok, err
 end
 

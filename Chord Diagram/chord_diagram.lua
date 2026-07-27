@@ -1,6 +1,6 @@
 --[[
 @description Chord Diagram
-@version 0.11.0
+@version 0.12.0
 @author Tom Trembling
 @about
   Capture a guitar chord voicing and pin its diagram to a point in the timeline,
@@ -38,8 +38,20 @@
   A barre cannot be written in a chord string, so retyping the text of a chord
   that has one keeps it.
 
-  Requires js_ReaScriptAPI and ReaImGui.
+  IF SOMETHING GOES WRONG, run the action "Chord Diagram: copy diagnostics". It
+  puts a plain-text report on your clipboard — versions, paths, what is selected
+  and the last error this action showed — for pasting into a message.
+
+  Requires REAPER 6.44 or newer, js_ReaScriptAPI and ReaImGui 0.9 or newer.
 @changelog
+  0.12.0 Every refusal now explains itself: nothing selected, several items
+        selected, an item that is not empty, a missing extension named
+        individually, or a REAPER too old, each with its own message and
+        nothing modified. A second action, "Chord Diagram: copy diagnostics",
+        copies versions, resolved paths, what is selected and the last error to
+        the clipboard for a bug report. A failed write to the item is now
+        rolled back rather than leaving a diagram on an item whose chord data
+        did not get written.
   0.11.0 Barres, laid across the strings by dragging over them at a fret and
         taken away by clicking the bar. Partial barres span exactly the strings
         you dragged across. Nothing infers a barre and laying one moves no
@@ -91,9 +103,11 @@ end
 local voicingOf = require("core.voicing")
 local layout = require("core.layout")
 local chunkOf = require("core.chunk")
+local preflight = require("core.preflight")
 
 local deps = require("adapter.deps")
 local dialog = require("adapter.dialog")
+local errors = require("adapter.errors")
 local grid = require("adapter.imgui")
 local itemAdapter = require("adapter.item")
 local lice = require("adapter.lice")
@@ -112,41 +126,45 @@ local IMGRESOURCEFLAGS = 3 -- the only value that never repeats the image
 local TITLE = "Chord Diagram"
 
 --- Stop with a message the user can act on, having changed nothing.
+---
+--- EVERY REFUSAL IS ALSO RECORDED. The developer cannot run REAPER, so a
+--- failure on the tester's machine reaches him only as whatever the tester
+--- pastes — and "I ran it and nothing happened" is not enough to act on. The
+--- diagnostic action reads the last recorded message back, so the report says
+--- what the user was actually told. Recording cannot itself fail; see
+--- `adapter.errors`.
 local function refuse(message)
+  errors.record(message)
   dialog.alert(TITLE, message)
 end
 
 --------------------------------------------------------------------------------
 -- Preconditions
+--
+-- Every fact is gathered first and judged afterwards, by `core.preflight`. The
+-- checks used to be a ladder of ifs here, which meant the messages the user
+-- sees — the whole of user stories 33 to 36 — lived in the one file that cannot
+-- be tested on this machine, and got their priority from the order somebody
+-- happened to write them in. Two audio items selected answered "that is not an
+-- empty item": true, but not the thing to fix.
+--
+-- Gathering needs the REAPER API and cannot be specced. Deciding does not, and
+-- now is.
 --------------------------------------------------------------------------------
 
-local missing = deps.missing()
-if #missing > 0 then
-  -- More than one extension can be missing now that ReaImGui is required, so
-  -- the sentence has to survive being about two things.
-  return refuse("This action needs " .. table.concat(missing, " and ") ..
-    ".\n\nInstall " .. (#missing == 1 and "it" or "them") .. " through ReaPack "
-    .. "(Extensions > ReaPack > Browse packages), then restart REAPER.")
-end
-
 local projectDir = project.dir()
-if not projectDir then
-  return refuse("Save the project first.\n\nDiagrams are stored beside the "
-    .. "project file so they travel with it.")
-end
-
 local items, selected = itemAdapter.selectedEmptyItems()
-if selected == 0 then
-  return refuse("Select an empty item first.\n\nInsert one with "
-    .. "Insert > Empty item, then select it.")
-end
-if #items == 0 then
-  return refuse("That is not an empty item.\n\nThis action attaches a diagram "
-    .. "to an empty item, so an audio or MIDI item is never altered.")
-end
-if selected > 1 then
-  return refuse("Select exactly one item.\n\n" .. selected .. " are selected, "
-    .. "and this action will not pick one for you.")
+
+local refusal = preflight.refusal({
+  host = deps.hostVersion(),
+  missing = deps.missing(),
+  unusable = deps.unusable(),
+  projectSaved = projectDir ~= nil,
+  selected = selected,
+  empty = #items,
+})
+if refusal then
+  return refuse(refusal)
 end
 
 local item = items[1]
@@ -217,36 +235,28 @@ local function apply(v)
     end
   end
 
-  local ok, err = itemAdapter.asUndoableEdit("Chord diagram: " .. v.name, function()
+  -- The chunk transformation happens BEFORE the undo block opens. It is pure
+  -- string work that can fail, and failing inside the block would open one for
+  -- an edit that never starts.
+  local updated, chunkError = chunkOf.setImage(chunkText, {
     -- The chord name goes into the item's notes: that is both what REAPER shows
     -- as the empty item's label and what makes it findable in the Item Manager.
     -- A non-empty notes block is also what makes IMGRESOURCEFLAGS take effect.
-    local updated, chunkError = chunkOf.setImage(chunkText, {
-      filename = relativePath,
-      flags = IMGRESOURCEFLAGS,
-      notes = v.name,
-    })
-    if not updated then
-      return false, chunkError
-    end
+    filename = relativePath,
+    flags = IMGRESOURCEFLAGS,
+    notes = v.name,
+  })
+  if not updated then
+    return refuse("The item's state could not be updated.\n\n" .. tostring(chunkError)
+      .. "\n\nThe item is unchanged.")
+  end
 
-    -- ORDER MATTERS, AND IT IS NOT ARBITRARY. The chunk goes first.
-    --
-    -- `SetItemStateChunk` replaces the item wholesale from text captured before
-    -- the window opened, and REAPER serialises extended state into that same
-    -- chunk. Storing the voicing first and writing the chunk second would hand
-    -- REAPER a chunk carrying the PREVIOUS voicing and quietly undo the edit.
-    -- Chunk, then extended state. Do not swap these two for tidiness.
-    if not itemAdapter.setChunk(item, updated) then
-      return false, "REAPER refused the updated item state."
-    end
-
-    -- Both writes are inside the one undo block, so the picture and the data
-    -- that produced it can never be one Ctrl+Z out of step with each other.
-    if not itemAdapter.setStoredVoicing(item, voicingOf.encode(v)) then
-      return false, "REAPER refused the item's chord data."
-    end
-    return true
+  -- Both writes go inside the one undo block, so the picture and the data that
+  -- produced it can never be one Ctrl+Z out of step with each other. Their
+  -- order, and what happens if the second one fails, are `adapter.item`'s —
+  -- the rule and the code that must obey it belong in the same place.
+  local ok, err = itemAdapter.asUndoableEdit("Chord diagram: " .. v.name, function()
+    return itemAdapter.writeChord(item, chunkText, updated, voicingOf.encode(v))
   end)
 
   if not ok then

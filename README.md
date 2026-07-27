@@ -21,8 +21,20 @@ https://github.com/tomtrembling/reaper-chord-diagram/raw/main/index.xml
 Then **Extensions → ReaPack → Browse packages**, find *Chord Diagram*, and install. Updates arrive
 via **Extensions → ReaPack → Synchronise packages**.
 
-Requires ReaImGui and js_ReaScriptAPI, both installable through ReaPack. The script checks for them
-at startup and names any that are missing.
+Requires REAPER 6.44 or newer, plus ReaImGui 0.9 or newer and js_ReaScriptAPI, both installable
+through ReaPack. The script checks all three at startup and names any that are missing or too old.
+
+The package installs two actions: **Chord Diagram**, and **Chord Diagram: copy diagnostics**.
+
+## Reporting a problem
+
+Run the **Chord Diagram: copy diagnostics** action. It puts a plain-text report on the clipboard —
+versions, the paths the plugin resolved, what is selected, whether the action would run right now,
+and the last error it showed — and prints the same text to the ReaScript console. Paste it into the
+report. Nothing is changed by running it.
+
+This matters more than usual here: development is on macOS and testing on Windows, so a
+Windows-only failure cannot be reproduced by the developer.
 
 > The current package is a **spike**: the voicing is hardcoded and there is no UI. It exists to prove
 > the rendering chain and settle display settings. See `issues/002-tracer-bullet-chord-on-item.md`.
