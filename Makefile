@@ -22,7 +22,7 @@ test:
 	@$(BIN)/busted
 
 lint:
-	@$(BIN)/luacheck src spec "Chord Diagram/chord_diagram_spike.lua"
+	@$(BIN)/luacheck src spec "Chord Diagram"
 
 check:
 	@rm -rf .luals-log

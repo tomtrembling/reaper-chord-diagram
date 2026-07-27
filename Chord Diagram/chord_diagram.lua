@@ -1,0 +1,176 @@
+--[[
+@description Chord Diagram
+@version 0.6.0
+@author Tom Trembling
+@about
+  Capture a guitar chord voicing and pin its diagram to a point in the timeline,
+  without leaving REAPER.
+
+  Select an empty item, run this action, and type the voicing as a chord string
+  such as x32010 (low E to high E, x for a muted string, 0 for an open one) plus
+  a name. The plugin renders a chord diagram into the project folder and
+  attaches it to the item, where it displays in the arrange view and scales as
+  the item is resized.
+
+  HOW TO USE
+    - Save the project first; the image is stored beside it.
+    - Insert an empty item on a track and select exactly one.
+    - Run this action, type the chord and a name, and press OK.
+
+  Requires js_ReaScriptAPI.
+@changelog
+  0.6.0 Real voicings typed as a chord string, rendered from the shared layout.
+  0.5.0 Spike: settle on IMGRESOURCEFLAGS 3 with the square 1024 canvas.
+--]]
+
+--------------------------------------------------------------------------------
+-- Module loading
+--
+-- The pure Lua lives in src/, which is not next to this file in the repository
+-- but may be next to it once installed. Both candidates go on the path so the
+-- script runs from either layout; packaging decides which one is real.
+--------------------------------------------------------------------------------
+
+local SEP = package.config:sub(1, 1)
+local scriptPath = select(2, reaper.get_action_context())
+local scriptDir = scriptPath:match("^(.*)[/\\][^/\\]*$") or "."
+
+for _, root in ipairs({
+  scriptDir .. SEP .. "src",
+  scriptDir .. SEP .. ".." .. SEP .. "src",
+}) do
+  package.path = table.concat({
+    root .. SEP .. "?.lua",
+    root .. SEP .. "?" .. SEP .. "init.lua",
+    package.path,
+  }, ";")
+end
+
+local voicingOf = require("core.voicing")
+local layout = require("core.layout")
+local chunkOf = require("core.chunk")
+
+local deps = require("adapter.deps")
+local dialog = require("adapter.dialog")
+local itemAdapter = require("adapter.item")
+local lice = require("adapter.lice")
+local project = require("adapter.project")
+
+--------------------------------------------------------------------------------
+-- Settled rendering configuration
+--
+-- Established over four runs on the tester's machine in slice 002. Do not
+-- re-derive these; see issues/done/002-tracer-bullet-chord-on-item.md.
+--------------------------------------------------------------------------------
+
+local CANVAS = 1024 -- square, power of two
+local IMGRESOURCEFLAGS = 3 -- the only value that never repeats the image
+
+local TITLE = "Chord Diagram"
+
+--- Stop with a message the user can act on, having changed nothing.
+local function refuse(message)
+  dialog.alert(TITLE, message)
+end
+
+--------------------------------------------------------------------------------
+-- Preconditions
+--------------------------------------------------------------------------------
+
+local missing = deps.missing()
+if #missing > 0 then
+  return refuse("This action needs " .. table.concat(missing, ", ") ..
+    ".\n\nInstall it through ReaPack (Extensions > ReaPack > Browse packages),"
+    .. " then restart REAPER.")
+end
+
+local projectDir = project.dir()
+if not projectDir then
+  return refuse("Save the project first.\n\nDiagrams are stored beside the "
+    .. "project file so they travel with it.")
+end
+
+local items, selected = itemAdapter.selectedEmptyItems()
+if selected == 0 then
+  return refuse("Select an empty item first.\n\nInsert one with "
+    .. "Insert > Empty item, then select it.")
+end
+if #items == 0 then
+  return refuse("That is not an empty item.\n\nThis action attaches a diagram "
+    .. "to an empty item, so an audio or MIDI item is never altered.")
+end
+if selected > 1 then
+  return refuse("Select exactly one item.\n\n" .. selected .. " are selected, "
+    .. "and this action will not pick one for you.")
+end
+
+local item = items[1]
+
+--------------------------------------------------------------------------------
+-- Input
+--------------------------------------------------------------------------------
+
+local answers = dialog.prompt(TITLE, { "Chord (e.g. x32010)", "Name" }, { "", "" })
+if not answers then
+  return -- cancelled; the item is untouched
+end
+
+local chordText, name = answers[1], answers[2]
+local v, parseError = voicingOf.parse(chordText, name)
+if not v then
+  return refuse(parseError .. "\n\nWrite one position per string, low E to high "
+    .. "E: x for muted, 0 for open, or the fret number. For example x32010.")
+end
+
+-- The name is drawn on the diagram and is what identifies the item in REAPER,
+-- so an unnamed chord falls back to its own chord string rather than nothing.
+if v.name == "" then
+  v.name = voicingOf.toText(v)
+end
+
+--------------------------------------------------------------------------------
+-- Render and attach
+--------------------------------------------------------------------------------
+
+local filename = voicingOf.fingerprint(v) .. ".png"
+local relativePath = project.relativeImagePath(filename)
+local absolutePath = project.absoluteImagePath(projectDir, filename)
+
+project.ensureImageFolder(projectDir)
+
+-- The filename is a hash of the voicing, so an identical chord elsewhere in the
+-- project already has its image on disk and there is nothing to render.
+if not project.exists(absolutePath) then
+  local rendered, renderError = lice.writePNG(layout.compute(v, CANVAS, CANVAS), absolutePath)
+  if not rendered then
+    return refuse("The diagram could not be rendered.\n\n" .. tostring(renderError))
+  end
+end
+
+local ok, err = itemAdapter.asUndoableEdit("Chord diagram: " .. v.name, function()
+  local text = itemAdapter.chunk(item)
+  if not text then
+    return false, "REAPER would not hand over the item's state."
+  end
+
+  -- The chord name goes into the item's notes: that is both what REAPER shows
+  -- as the empty item's label and what makes it findable in the Item Manager.
+  -- A non-empty notes block is also what makes IMGRESOURCEFLAGS take effect.
+  local updated, chunkError = chunkOf.setImage(text, {
+    filename = relativePath,
+    flags = IMGRESOURCEFLAGS,
+    notes = v.name,
+  })
+  if not updated then
+    return false, chunkError
+  end
+
+  if not itemAdapter.setChunk(item, updated) then
+    return false, "REAPER refused the updated item state."
+  end
+  return true
+end)
+
+if not ok then
+  refuse("The chord could not be attached to the item.\n\n" .. tostring(err))
+end

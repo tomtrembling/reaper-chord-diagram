@@ -1,7 +1,9 @@
 return {
   default = {
     ROOT = { "spec" },
-    lpath = "src/?.lua;src/?/init.lua",
+    -- `spec/?.lua` is on the path so shared test data (spec/fixtures/*) can be
+    -- required by name. Only files matching `pattern` are run as tests.
+    lpath = "src/?.lua;src/?/init.lua;spec/?.lua",
     pattern = "_spec",
   },
 }

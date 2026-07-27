@@ -16,8 +16,9 @@ files["spec"] = {
   std = "lua54+busted",
 }
 
--- Spike scripts at the repo root are REAPER entry points, so they get the same
--- allowance as the adapter. They are throwaway by design; see issue 002.
-files["Chord Diagram/chord_diagram_spike.lua"] = {
+-- The scripts in the ReaPack category folder are REAPER entry points: they
+-- bootstrap the module path and wire the adapters together, so they get the
+-- same allowance as src/adapter. No chord logic lives in them.
+files["Chord Diagram"] = {
   read_globals = { "reaper" },
 }
