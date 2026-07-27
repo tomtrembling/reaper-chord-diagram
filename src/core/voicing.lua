@@ -202,10 +202,18 @@ end
 --------------------------------------------------------------------------------
 -- Storage
 --
--- How a voicing survives in a REAPER item state chunk. The chunk is line-based
--- text, so the stored form is ONE token: no whitespace, no quote of any kind,
--- nothing REAPER's own parser would try to interpret. Everything else is
--- percent-escaped into it.
+-- How a voicing is written down. The stored form is ONE token: no whitespace,
+-- no quote of any kind, nothing REAPER's own parser would try to interpret.
+-- Everything else is percent-escaped into it.
+--
+-- That discipline was adopted for a line in a state chunk, and it is kept now
+-- that the voicing lives in the item's extended state instead — extended state
+-- is serialised into the same line-based project file, and a value that cannot
+-- upset a text format is worth more than the few bytes it costs.
+--
+-- WHERE the token is put is deliberately not this module's business: `adapter
+-- .item` owns that, which is why slice 005's move from a chunk line to
+-- `P_EXT:chorddiagram` changed nothing here and broke no stored chord.
 --
 -- The format is versioned so a later change is detected rather than silently
 -- misread, and it stores the fields nothing draws yet — finger numbers and

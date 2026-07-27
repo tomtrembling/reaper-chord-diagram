@@ -10,7 +10,16 @@
 --- ## from the documented format (ReaTeam's State Chunk Definitions) and the ##
 --- ## field order the spike's `withImage` was built against.                 ##
 --- ##                                                                        ##
---- ## Replacing them with genuine captures is an open item in                ##
+--- ## ONE THING IS DELIBERATELY ABSENT rather than reconstructed: how REAPER ##
+--- ## serialises an item's extended state — the `P_EXT:chorddiagram` value   ##
+--- ## the voicing is stored under — into the chunk. That form is not known   ##
+--- ## here, and writing a plausible-looking guess would be worse than an     ##
+--- ## omission, because the specs would then depend on a fiction. `core`     ##
+--- ## .chunk never reads or writes it; what protects it is the spec saying   ##
+--- ## an unrecognised line is carried through, which holds whatever the real ##
+--- ## serialisation looks like.                                              ##
+--- ##                                                                        ##
+--- ## Replacing all of this with genuine captures is an open item in         ##
 --- ## issues/hitl-queue.md under slice 003. Until that is done, a passing    ##
 --- ## Chunk spec proves the transformation is correct against the format as  ##
 --- ## documented — not against the format REAPER actually emits.             ##
@@ -41,16 +50,20 @@ GUID {2F9A6B14-7C05-48D3-B1E6-3A8C4D9E0F52}
 >
 ]]
 
---- An empty item that already carries a chord diagram: a notes block holding
---- the chord name, the two image fields, and the stored voicing.
+--- An empty item that already carries a chord diagram: a notes block holding the
+--- chord name, and the two image fields. That is the whole of what this plugin
+--- puts in a chunk.
 ---
---- The voicing is `x32010` named `Cadd9`, and the image filename is that
---- voicing's real fingerprint, so the fixture is internally consistent — a
---- reader can check the hash rather than take it on trust.
+--- The chord is `x32010` named `Cadd9`, and the image filename is that voicing's
+--- real fingerprint, so the fixture is internally consistent — a reader can
+--- check the hash rather than take it on trust.
 ---
---- The `CHORDDIAGRAM` line is the plugin's own, added in slice 005. Whether
---- REAPER preserves an unrecognised item line across a project save is the one
---- thing this fixture cannot answer; it is in the HITL queue.
+--- The voicing itself is NOT here. Slice 005 wrote it onto a `CHORDDIAGRAM` line
+--- in this chunk; that was reversed, because REAPER rebuilds an item chunk from
+--- its own model and promises nothing about a line it does not recognise. It now
+--- lives in the item's extended state under `P_EXT:chorddiagram`, written
+--- through `adapter.item`, so a real capture of this item would carry it in
+--- whatever form REAPER uses for that — see the banner above.
 M.ITEM_WITH_CHORD = [[
 <ITEM
 POSITION 8.5
@@ -75,7 +88,6 @@ GUID {2F9A6B14-7C05-48D3-B1E6-3A8C4D9E0F52}
 >
 RESOURCEFN "chord-diagrams/3a8f57a773ffd3a0.png"
 IMGRESOURCEFLAGS 3
-CHORDDIAGRAM v1;s=6;f=-1,3,2,0,1,0;g=0,0,0,0,0,0;b=;p=;n=Cadd9
 >
 ]]
 

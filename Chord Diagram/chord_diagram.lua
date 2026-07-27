@@ -1,6 +1,6 @@
 --[[
 @description Chord Diagram
-@version 0.7.0
+@version 0.7.1
 @author Tom Trembling
 @about
   Capture a guitar chord voicing and pin its diagram to a point in the timeline,
@@ -22,6 +22,8 @@
 
   Requires js_ReaScriptAPI.
 @changelog
+  0.7.1 Chords are stored in the item's extended state, which REAPER saves with
+        the project, rather than on a custom line in the item state chunk.
   0.7.0 Chords are stored on the item and reloaded for editing; renaming a
         chord no longer means rebuilding it.
   0.6.0 Real voicings typed as a chord string, rendered from the shared layout.
@@ -116,8 +118,13 @@ local item = items[1]
 --
 -- The item's stored voicing is the source of truth; the PNG is a derivative.
 -- Reading it back is what turns this action from "create a chord" into "edit
--- the chord that is here". The chunk is read once: the dialog below is modal,
--- so nothing can change the item between here and the write.
+-- the chord that is here". Both reads happen once, here: the dialog below is
+-- modal, so nothing can change the item between here and the write.
+--
+-- The voicing comes from the item's extended state and the image fields from its
+-- state chunk. They are two different mechanisms because REAPER offers exactly
+-- one of each: the image is a chunk field it defines, and the voicing is ours to
+-- put somewhere it has promised to keep.
 --------------------------------------------------------------------------------
 
 local chunkText = itemAdapter.chunk(item)
@@ -125,7 +132,11 @@ if not chunkText then
   return refuse("REAPER would not hand over the item's state.")
 end
 
-local existing, readError = chunkOf.readVoicing(chunkText)
+local existing, readError
+local storedVoicing = itemAdapter.storedVoicing(item)
+if storedVoicing then
+  existing, readError = voicingOf.decode(storedVoicing)
+end
 if readError then
   return refuse("This item's chord data could not be read.\n\n" .. readError
     .. "\n\nApplying a chord now would overwrite it.")
@@ -191,16 +202,21 @@ local ok, err = itemAdapter.asUndoableEdit("Chord diagram: " .. v.name, function
     return false, chunkError
   end
 
-  -- The voicing goes in alongside the image, in the same chunk and therefore
-  -- the same write, so the picture and the data that produced it can never be
-  -- one edit out of step with each other.
-  updated, chunkError = chunkOf.setVoicing(updated, v)
-  if not updated then
-    return false, chunkError
-  end
-
+  -- ORDER MATTERS, AND IT IS NOT ARBITRARY. The chunk goes first.
+  --
+  -- `SetItemStateChunk` replaces the item wholesale from text captured before
+  -- the dialog opened, and REAPER serialises extended state into that same
+  -- chunk. Storing the voicing first and writing the chunk second would hand
+  -- REAPER a chunk carrying the PREVIOUS voicing and quietly undo the edit.
+  -- Chunk, then extended state. Do not swap these two for tidiness.
   if not itemAdapter.setChunk(item, updated) then
     return false, "REAPER refused the updated item state."
+  end
+
+  -- Both writes are inside the one undo block, so the picture and the data that
+  -- produced it can never be one Ctrl+Z out of step with each other.
+  if not itemAdapter.setStoredVoicing(item, voicingOf.encode(v)) then
+    return false, "REAPER refused the item's chord data."
   end
   return true
 end)

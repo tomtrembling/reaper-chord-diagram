@@ -51,6 +51,21 @@ are implemented and deferred to the HITL queue under *Slice 005*, per the standi
 policy. That queue also carries the one genuine risk: whether REAPER preserves an unrecognised item
 chunk line across a project save, with a documented fallback if it does not.
 
+## Correction — storage moved to the item's extended state
+
+The `CHORDDIAGRAM` chunk line described above no longer exists. It rested on REAPER preserving an
+item chunk line it does not recognise across a project save, which it almost certainly does not:
+REAPER reserialises an item chunk from its own model, and a line it has no field for has nowhere to
+live. The encoded token is now written through REAPER's documented per-item extended state,
+`GetSetMediaItemInfo_String(item, "P_EXT:chorddiagram", …)`, which is saved with the project by
+design and is what the PRD asked for under *Anchoring and attachment*.
+
+The encoded string is byte-for-byte unchanged, and `voicing.encode`/`decode` and their specs were
+not touched — the point of keeping format and storage apart. `chunk.setVoicing`/`readVoicing` were
+removed outright rather than left unused, so nothing but `adapter.item` can claim to hold a voicing.
+The acceptance criteria above are unaffected; the mechanism behind them changed. The blocking HITL
+item this created is gone from the queue, replaced by a save/close/reopen check.
+
 ## User stories addressed
 
 - User story 20

@@ -11,15 +11,15 @@
 ---     `<NOTES>` block. The flags line on its own does nothing.
 ---   * The image fields go in immediately before the chunk's own closing `>`,
 ---     after any nested sub-chunks.
-local voicingOf = require("core.voicing")
-
-local M = {}
-
---- The chunk line the voicing is stored on.
 ---
---- The data lives in the state chunk rather than anywhere keyed by item
---- identity, so duplicating an item carries its chord for free.
-M.FIELD = "CHORDDIAGRAM"
+--- This module owns the IMAGE only. The voicing does not live here: it is stored
+--- in the item's extended state, through `adapter.item`. Slice 005 put it on a
+--- `CHORDDIAGRAM` line in the chunk and that was reversed, because REAPER
+--- rebuilds an item chunk from its own model and gives no undertaking to keep a
+--- line it does not recognise. Two places that could each claim to hold the
+--- voicing is exactly the ambiguity worth not having, so there is no chunk-side
+--- reader left behind.
+local M = {}
 
 --- Render note text as REAPER stores it: one `|`-prefixed line each.
 --- @param notes string
@@ -65,8 +65,11 @@ end
 --- `notes` must be non-empty: REAPER ignores the display flags otherwise, and
 --- silently producing an item that shows nothing is worse than refusing.
 ---
---- Any voicing the item carries is left alone, so replacing the image never
---- costs the data the image was made from.
+--- Only the three fields named above are removed and rewritten. Everything else
+--- the chunk carries — including whatever REAPER writes there for the item's
+--- extended state, which is where the voicing now lives — passes through
+--- untouched, so replacing the image never costs the data the image was made
+--- from.
 --- @param text string the item's state chunk
 --- @param image { filename: string, flags: integer, notes: string }
 --- @return string|nil chunk
@@ -79,30 +82,6 @@ function M.setImage(text, image)
   local block = string.format('\n%s\nRESOURCEFN "%s"\nIMGRESOURCEFLAGS %d',
     notesBlock(image.notes), image.filename, image.flags)
   return insertedBeforeClose(stripped(text), block)
-end
-
---- Store the voicing on the item, replacing any voicing already there.
----
---- The image fields are left alone, so the two writes compose in either order.
---- @param text string the item's state chunk
---- @param v Voicing
---- @return string|nil chunk
---- @return string|nil err
-function M.setVoicing(text, v)
-  local without = text:gsub("\n" .. M.FIELD .. " [^\n]*", "")
-  return insertedBeforeClose(without, "\n" .. M.FIELD .. " " .. voicingOf.encode(v))
-end
-
---- The voicing stored on the item, or nil if it carries no chord.
---- @param text string the item's state chunk
---- @return Voicing|nil
---- @return string|nil err
-function M.readVoicing(text)
-  local stored = text:match("\n" .. M.FIELD .. " ([^\n]*)")
-  if not stored then
-    return nil
-  end
-  return voicingOf.decode(stored)
 end
 
 return M

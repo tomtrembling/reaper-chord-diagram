@@ -36,6 +36,10 @@ packaging note at the end.
       already carries a chord diagram for `M.ITEM_WITH_CHORD`, and on an audio item for
       `M.AUDIO_ITEM`. Re-run `make test`; any failure is a real defect in `src/core/chunk.lua`,
       not in the test.
+      The `M.ITEM_WITH_CHORD` capture now answers a second question as well: how REAPER serialises
+      the item's extended state (`P_EXT:chorddiagram`, where the voicing lives) into the chunk. That
+      form is deliberately absent from the fixture rather than guessed at — see the banner at the
+      top of the file. Once captured, the encoded voicing should be visible somewhere in it.
 
 ### Confirm on Windows
 
@@ -74,31 +78,32 @@ packaging note at the end.
 
 ## Slice 005 — persistence and round-trip editing
 
-The voicing is now stored on the item as one line in its state chunk:
+The voicing is stored on the item as one encoded token:
 
 ```
-CHORDDIAGRAM v1;s=6;f=-1,3,2,0,1,0;g=0,0,0,0,0,0;b=;p=;n=Cadd9
+v1;s=6;f=-1,3,2,0,1,0;g=0,0,0,0,0,0;b=;p=;n=Cadd9
 ```
 
 One token, no whitespace and no quotes, everything else percent-escaped, versioned with `v1`.
 
-### Blocking risk — confirm this first, the whole slice rests on it
-
-- [ ] **Does REAPER preserve the `CHORDDIAGRAM` line across a project save and reload?**
-      REAPER may discard item chunk lines it does not recognise when it rewrites the project file.
-      Nothing on the dev machine can answer this. To check: apply a chord, save the project, close
-      it, reopen it, and run the action on that item again. The chord and name must come back
-      pre-filled in the dialog. Also open the `.RPP` in a text editor and confirm the
-      `CHORDDIAGRAM` line is inside the `<ITEM` block.
-      **If the line does not survive**, the fix is to keep the same encoded string but store it
-      through REAPER's own item extension state —
-      `reaper.GetSetMediaItemInfo_String(item, "P_EXT:chorddiagram", encoded, true)` to write and
-      the same call with `false` to read — which is documented to persist and to follow a copied
-      item. Only `src/adapter/item.lua` and the two `chunkOf` calls in the entry script change;
-      `voicing.encode`/`decode` and their specs are unaffected, which is why the format and the
-      storage mechanism were kept apart. Raise it as a new issue rather than patching in place.
+**The storage mechanism changed after slice 005 was first written, and this section was rewritten
+to match.** Slice 005 put that token on a bespoke `CHORDDIAGRAM` line inside the item state chunk,
+and flagged as a blocking risk the question of whether REAPER keeps a chunk line it does not
+recognise across a project save. It almost certainly does not — REAPER reserialises an item chunk
+from its own model, and a line it has no field for has nowhere to live. Rather than send you to
+test a gamble, the token now goes into REAPER's documented per-item extended state,
+`GetSetMediaItemInfo_String(item, "P_EXT:chorddiagram", …)`, which is saved with the project by
+design. This is also what the PRD asked for under *Anchoring and attachment*. The encoded string is
+byte-for-byte identical, so nothing below is about the format. **There is no longer a
+`CHORDDIAGRAM` line to look for in the `.RPP`; do not go hunting for one.**
 
 ### Confirm on Windows
+
+- [ ] **A chord survives save, close and reopen.** Apply a chord, save the project, close it,
+      reopen it, and run the action on that item again. The chord and the name must come back
+      pre-filled in the dialog. This is the cheap replacement for slice 005's blocking risk: it
+      confirms extended state persists, which is the one assumption the storage change rests on.
+      If it fails, that is a real defect — raise a new issue rather than patching in place.
 
 - [ ] **Reopening an item pre-fills its chord.** Apply `x32010` named `C`, run the action again on
       the same item, and expect both fields already filled in rather than blank.
@@ -110,9 +115,15 @@ One token, no whitespace and no quotes, everything else percent-escaped, version
       name to `C major`. The shape must be identical and only the title different.
 - [ ] **Copying an item carries the chord.** Copy an item with a chord and paste it elsewhere, then
       run the action on the copy: it must pre-fill with the same voicing. This is what proves the
-      data is not keyed to item identity.
+      data is not keyed to item identity. It matters more since the storage change: the chunk line
+      was self-evidently copied with the chunk, whereas that REAPER duplicates a `P_EXT:` value
+      along with the item could not be confirmed from documentation on the dev machine, so it is
+      checked here rather than assumed. If the copy comes up blank, the fallback is to read the
+      voicing off the source item and write it to the copy explicitly — raise it as an issue.
 - [ ] **Ctrl+Z reverts an edit in one step**, restoring both the previous image and the previous
-      stored voicing.
+      stored voicing. Two REAPER writes now happen inside the undo block — the state chunk, then
+      the extended state — so this also confirms they collapse into a single undo point rather than
+      needing two presses.
 - [ ] **A name with a comma still round-trips.** Name a chord `C, second inversion` and reopen it.
       The dialog is comma-separated, so this exercises `dialog.prompt`'s rejoin as well as the
       storage escaping.
