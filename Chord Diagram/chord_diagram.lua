@@ -1,6 +1,6 @@
 --[[
 @description Chord Diagram
-@version 0.6.0
+@version 0.7.0
 @author Tom Trembling
 @about
   Capture a guitar chord voicing and pin its diagram to a point in the timeline,
@@ -16,9 +16,14 @@
     - Save the project first; the image is stored beside it.
     - Insert an empty item on a track and select exactly one.
     - Run this action, type the chord and a name, and press OK.
+    - Run it again on the same item to edit the chord: the voicing is stored on
+      the item, so it comes back already filled in, and copying the item copies
+      the chord with it.
 
   Requires js_ReaScriptAPI.
 @changelog
+  0.7.0 Chords are stored on the item and reloaded for editing; renaming a
+        chord no longer means rebuilding it.
   0.6.0 Real voicings typed as a chord string, rendered from the shared layout.
   0.5.0 Spike: settle on IMGRESOURCEFLAGS 3 with the square 1024 canvas.
 --]]
@@ -107,16 +112,42 @@ end
 local item = items[1]
 
 --------------------------------------------------------------------------------
+-- What the item already carries
+--
+-- The item's stored voicing is the source of truth; the PNG is a derivative.
+-- Reading it back is what turns this action from "create a chord" into "edit
+-- the chord that is here". The chunk is read once: the dialog below is modal,
+-- so nothing can change the item between here and the write.
+--------------------------------------------------------------------------------
+
+local chunkText = itemAdapter.chunk(item)
+if not chunkText then
+  return refuse("REAPER would not hand over the item's state.")
+end
+
+local existing, readError = chunkOf.readVoicing(chunkText)
+if readError then
+  return refuse("This item's chord data could not be read.\n\n" .. readError
+    .. "\n\nApplying a chord now would overwrite it.")
+end
+
+--------------------------------------------------------------------------------
 -- Input
 --------------------------------------------------------------------------------
 
-local answers = dialog.prompt(TITLE, { "Chord (e.g. x32010)", "Name" }, { "", "" })
+local answers = dialog.prompt(TITLE, { "Chord (e.g. x32010)", "Name" }, {
+  existing and voicingOf.toText(existing) or "",
+  existing and existing.name or "",
+})
 if not answers then
   return -- cancelled; the item is untouched
 end
 
+-- Parsed against the existing chord, not from nothing: barres, finger numbers
+-- and a base-fret override cannot be written in the text field, so re-typing
+-- the text has to merge into what is already there or it deletes them.
 local chordText, name = answers[1], answers[2]
-local v, parseError = voicingOf.parse(chordText, name)
+local v, parseError = voicingOf.parse(chordText, name, existing)
 if not v then
   return refuse(parseError .. "\n\nWrite one position per string, low E to high "
     .. "E: x for muted, 0 for open, or the fret number. For example x32010.")
@@ -148,19 +179,22 @@ if not project.exists(absolutePath) then
 end
 
 local ok, err = itemAdapter.asUndoableEdit("Chord diagram: " .. v.name, function()
-  local text = itemAdapter.chunk(item)
-  if not text then
-    return false, "REAPER would not hand over the item's state."
-  end
-
   -- The chord name goes into the item's notes: that is both what REAPER shows
   -- as the empty item's label and what makes it findable in the Item Manager.
   -- A non-empty notes block is also what makes IMGRESOURCEFLAGS take effect.
-  local updated, chunkError = chunkOf.setImage(text, {
+  local updated, chunkError = chunkOf.setImage(chunkText, {
     filename = relativePath,
     flags = IMGRESOURCEFLAGS,
     notes = v.name,
   })
+  if not updated then
+    return false, chunkError
+  end
+
+  -- The voicing goes in alongside the image, in the same chunk and therefore
+  -- the same write, so the picture and the data that produced it can never be
+  -- one edit out of step with each other.
+  updated, chunkError = chunkOf.setVoicing(updated, v)
   if not updated then
     return false, chunkError
   end

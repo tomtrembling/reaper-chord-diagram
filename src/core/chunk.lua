@@ -11,7 +11,15 @@
 ---     `<NOTES>` block. The flags line on its own does nothing.
 ---   * The image fields go in immediately before the chunk's own closing `>`,
 ---     after any nested sub-chunks.
+local voicingOf = require("core.voicing")
+
 local M = {}
+
+--- The chunk line the voicing is stored on.
+---
+--- The data lives in the state chunk rather than anywhere keyed by item
+--- identity, so duplicating an item carries its chord for free.
+M.FIELD = "CHORDDIAGRAM"
 
 --- Render note text as REAPER stores it: one `|`-prefixed line each.
 --- @param notes string
@@ -35,10 +43,30 @@ local function stripped(text)
   return text
 end
 
+--- Put `block` inside the item, immediately before its own closing `>`.
+---
+--- Substituted through a function so that a `%` anywhere in the block — a note
+--- reading "100% sure", a percent-escaped chord name — is taken literally
+--- rather than read as a gsub capture reference.
+--- @param text string
+--- @param block string
+--- @return string|nil chunk
+--- @return string|nil err
+local function insertedBeforeClose(text, block)
+  local out, replacements = text:gsub("\n>%s*$", function() return block .. "\n>\n" end)
+  if replacements == 0 then
+    return nil, "This does not look like an item state chunk: no closing '>' found."
+  end
+  return out
+end
+
 --- Attach an image to an item.
 ---
 --- `notes` must be non-empty: REAPER ignores the display flags otherwise, and
 --- silently producing an item that shows nothing is worse than refusing.
+---
+--- Any voicing the item carries is left alone, so replacing the image never
+--- costs the data the image was made from.
 --- @param text string the item's state chunk
 --- @param image { filename: string, flags: integer, notes: string }
 --- @return string|nil chunk
@@ -48,16 +76,33 @@ function M.setImage(text, image)
     return nil, "An item needs non-empty notes, or REAPER ignores the image display flags."
   end
 
-  local block = string.format('\n%s\nRESOURCEFN "%s"\nIMGRESOURCEFLAGS %d\n>\n',
+  local block = string.format('\n%s\nRESOURCEFN "%s"\nIMGRESOURCEFLAGS %d',
     notesBlock(image.notes), image.filename, image.flags)
+  return insertedBeforeClose(stripped(text), block)
+end
 
-  -- Replaced through a function so that a `%` in the note text or filename is
-  -- taken literally rather than read as a gsub capture reference.
-  local out, replacements = stripped(text):gsub("\n>%s*$", function() return block end)
-  if replacements == 0 then
-    return nil, "This does not look like an item state chunk: no closing '>' found."
+--- Store the voicing on the item, replacing any voicing already there.
+---
+--- The image fields are left alone, so the two writes compose in either order.
+--- @param text string the item's state chunk
+--- @param v Voicing
+--- @return string|nil chunk
+--- @return string|nil err
+function M.setVoicing(text, v)
+  local without = text:gsub("\n" .. M.FIELD .. " [^\n]*", "")
+  return insertedBeforeClose(without, "\n" .. M.FIELD .. " " .. voicingOf.encode(v))
+end
+
+--- The voicing stored on the item, or nil if it carries no chord.
+--- @param text string the item's state chunk
+--- @return Voicing|nil
+--- @return string|nil err
+function M.readVoicing(text)
+  local stored = text:match("\n" .. M.FIELD .. " ([^\n]*)")
+  if not stored then
+    return nil
   end
-  return out
+  return voicingOf.decode(stored)
 end
 
 return M

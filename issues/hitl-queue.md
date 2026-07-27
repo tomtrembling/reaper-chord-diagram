@@ -71,3 +71,57 @@ packaging note at the end.
       entry script puts both `<script dir>/src` and `<script dir>/../src` on `package.path`, so
       either layout works: ReaPack can install the modules beside the script, or one directory up.
       Nothing was changed in `index.xml` and `make index` was not run.
+
+## Slice 005 — persistence and round-trip editing
+
+The voicing is now stored on the item as one line in its state chunk:
+
+```
+CHORDDIAGRAM v1;s=6;f=-1,3,2,0,1,0;g=0,0,0,0,0,0;b=;p=;n=Cadd9
+```
+
+One token, no whitespace and no quotes, everything else percent-escaped, versioned with `v1`.
+
+### Blocking risk — confirm this first, the whole slice rests on it
+
+- [ ] **Does REAPER preserve the `CHORDDIAGRAM` line across a project save and reload?**
+      REAPER may discard item chunk lines it does not recognise when it rewrites the project file.
+      Nothing on the dev machine can answer this. To check: apply a chord, save the project, close
+      it, reopen it, and run the action on that item again. The chord and name must come back
+      pre-filled in the dialog. Also open the `.RPP` in a text editor and confirm the
+      `CHORDDIAGRAM` line is inside the `<ITEM` block.
+      **If the line does not survive**, the fix is to keep the same encoded string but store it
+      through REAPER's own item extension state —
+      `reaper.GetSetMediaItemInfo_String(item, "P_EXT:chorddiagram", encoded, true)` to write and
+      the same call with `false` to read — which is documented to persist and to follow a copied
+      item. Only `src/adapter/item.lua` and the two `chunkOf` calls in the entry script change;
+      `voicing.encode`/`decode` and their specs are unaffected, which is why the format and the
+      storage mechanism were kept apart. Raise it as a new issue rather than patching in place.
+
+### Confirm on Windows
+
+- [ ] **Reopening an item pre-fills its chord.** Apply `x32010` named `C`, run the action again on
+      the same item, and expect both fields already filled in rather than blank.
+- [ ] **Editing writes a new image and the item shows it.** With the above item, change the chord to
+      `x32013` and apply. `chord-diagrams/` should now hold two PNGs, and the item must show the new
+      diagram immediately — no stale picture. This is the caching behaviour the hashed filename
+      exists to sidestep, so it is the interesting one.
+- [ ] **Renaming changes only the title.** Reopen the same item, leave the chord alone, change the
+      name to `C major`. The shape must be identical and only the title different.
+- [ ] **Copying an item carries the chord.** Copy an item with a chord and paste it elsewhere, then
+      run the action on the copy: it must pre-fill with the same voicing. This is what proves the
+      data is not keyed to item identity.
+- [ ] **Ctrl+Z reverts an edit in one step**, restoring both the previous image and the previous
+      stored voicing.
+- [ ] **A name with a comma still round-trips.** Name a chord `C, second inversion` and reopen it.
+      The dialog is comma-separated, so this exercises `dialog.prompt`'s rejoin as well as the
+      storage escaping.
+
+### Judgement call to confirm
+
+- [ ] **A base-fret override survives a text edit.** Re-typing the chord string carries the previous
+      override forward, because the text field cannot express one and dropping it would lose data
+      on a pure rename. The cost is that retyping a completely different chord keeps an override
+      that may now be nonsense. There is no UI to clear it until slice 004/006. The alternative —
+      dropping the override whenever the frets change — silently discards an explicit choice, which
+      seemed worse. Confirm, or reverse it in slice 004.

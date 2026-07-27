@@ -42,7 +42,15 @@ GUID {2F9A6B14-7C05-48D3-B1E6-3A8C4D9E0F52}
 ]]
 
 --- An empty item that already carries a chord diagram: a notes block holding
---- the chord name, plus the two image fields.
+--- the chord name, the two image fields, and the stored voicing.
+---
+--- The voicing is `x32010` named `Cadd9`, and the image filename is that
+--- voicing's real fingerprint, so the fixture is internally consistent — a
+--- reader can check the hash rather than take it on trust.
+---
+--- The `CHORDDIAGRAM` line is the plugin's own, added in slice 005. Whether
+--- REAPER preserves an unrecognised item line across a project save is the one
+--- thing this fixture cannot answer; it is in the HITL queue.
 M.ITEM_WITH_CHORD = [[
 <ITEM
 POSITION 8.5
@@ -65,8 +73,9 @@ GUID {2F9A6B14-7C05-48D3-B1E6-3A8C4D9E0F52}
 <NOTES
 |Cadd9
 >
-RESOURCEFN "chord-diagrams/8fbb1c2d9a4e7051.png"
+RESOURCEFN "chord-diagrams/3a8f57a773ffd3a0.png"
 IMGRESOURCEFLAGS 3
+CHORDDIAGRAM v1;s=6;f=-1,3,2,0,1,0;g=0,0,0,0,0,0;b=;p=;n=Cadd9
 >
 ]]
 
