@@ -88,14 +88,18 @@ end
 --- Returns nil and a message the user can act on if the string cannot be read,
 --- so callers can refuse the input rather than write a half-understood chord.
 ---
---- `from` is the voicing being edited, if there is one. Barres, finger numbers
---- and a base-fret override are carried across from it, because none of them
---- can be written in the text form — parsing text has to MERGE into an
+--- `from` is the voicing being edited, if there is one. Barres, finger numbers,
+--- a base-fret override and the name are carried across from it, because none
+--- of them can be written in the text form — parsing text has to MERGE into an
 --- existing chord rather than replace it, or retyping one string of a barre
 --- chord silently deletes the barre. This is a data-loss guard, not a
 --- convenience.
+---
+--- `name` is therefore an OVERRIDE and not a required argument: given, it
+--- renames; omitted, the chord keeps the name it had. A caller re-parsing on
+--- every keystroke must not have to restate the name to avoid erasing it.
 --- @param text string
---- @param name? string free-text chord name
+--- @param name? string free-text chord name; nil keeps `from`'s
 --- @param from? Voicing the voicing being edited
 --- @return Voicing|nil
 --- @return string|nil err
@@ -123,7 +127,7 @@ function M.parse(text, name, from)
     barres = from.barres,
     -- Carried across only while it still frames the chord. See `M.baseFret`.
     baseFret = M.canFrame(frets, from.baseFret) and from.baseFret or nil,
-    name = name,
+    name = name or from.name,
   })
 end
 
@@ -153,17 +157,26 @@ end
 --- The number of frets the diagram shows at once. Settled at five.
 M.SPAN = 5
 
+--- The first fret on the neck. A window cannot start above it.
+M.NUT = 1
+
 --- Can a window starting at `base` show every fretted note of this shape?
 ---
 --- The window is `M.SPAN` frets deep and the span never widens, so a shape can
 --- sit outside the window a base fret would open. That is the test for whether
 --- an override is still worth honouring, and it is public because the override
 --- control in the UI needs the same answer before it offers a value.
+---
+--- A base above the nut is refused outright rather than measured: there is no
+--- fret 0, and a low chord would otherwise "fit" a window starting at one and
+--- be drawn a whole cell out of place. The control hands this function numbers
+--- a user nudged, so the impossible ones have to be answered here and not
+--- assumed away.
 --- @param frets integer[]
 --- @param base integer|nil
 --- @return boolean
 function M.canFrame(frets, base)
-  if not base then
+  if not base or base < M.NUT then
     return false
   end
   for _, fret in ipairs(frets) do
@@ -237,6 +250,53 @@ function M.setFret(v, index, fret)
     fingers = v.fingers,
     barres = v.barres,
     baseFret = M.canFrame(frets, v.baseFret) and v.baseFret or nil,
+    name = v.name,
+  })
+end
+
+--- Rename the chord.
+---
+--- Separate from `M.parse` on purpose, even though parsing can also carry a
+--- name: the name is typed alongside a chord string that may be half-finished
+--- at that instant, and a rename must not be hostage to the text field being
+--- parseable. The name is free text and is stored exactly as given — no
+--- algorithm decides what a chord is called here.
+--- @param v Voicing
+--- @param name string
+--- @return Voicing
+function M.setName(v, name)
+  return M.new({
+    frets = v.frets,
+    fingers = v.fingers,
+    barres = v.barres,
+    baseFret = v.baseFret,
+    name = name,
+  })
+end
+
+--- Frame the diagram from a fret of the user's choosing.
+---
+--- The override changes only how the shape is DRAWN — which five frets the
+--- window shows and what the marker says — and never the shape itself. That is
+--- the whole point of the control: a guitarist who thinks of a chord as a
+--- fifth-position shape gets to have it drawn that way without playing it
+--- differently.
+---
+--- A base that cannot hold the shape is REFUSED rather than stored: the chord
+--- goes back to deriving its own framing. `M.baseFret` would ignore such an
+--- override anyway, but storing one lets it lie dormant and come back to life
+--- the day the shape moves under it, which is a framing the user never chose
+--- reappearing weeks later. `M.canFrame` is the single test for all of this;
+--- nothing outside this module gets to have its own opinion about it.
+--- @param v Voicing
+--- @param base integer|nil the fret to frame from; nil returns to derived
+--- @return Voicing
+function M.setBaseFret(v, base)
+  return M.new({
+    frets = v.frets,
+    fingers = v.fingers,
+    barres = v.barres,
+    baseFret = M.canFrame(v.frets, base) and base or nil,
     name = v.name,
   })
 end

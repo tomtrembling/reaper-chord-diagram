@@ -159,6 +159,51 @@ describe("voicing", function()
     end)
   end)
 
+  describe("choosing a framing by hand", function()
+    it("refuses a window starting above the nut, which is not a place on a neck", function()
+      -- The override control offers a number, and a number can be nudged below
+      -- 1. There is no fret 0 to start a window at, and an open C would
+      -- otherwise "fit" a window at fret 0 and draw its dots a cell too low.
+      local C = assert(voicing.parse("x32010", "C"))
+      assert.is_false(voicing.canFrame(C.frets, 0))
+      assert.is_false(voicing.canFrame(C.frets, -3))
+    end)
+
+    it("reframes the diagram without moving a single finger", function()
+      -- A Bm at the seventh derives a window at the seventh. A guitarist who
+      -- thinks of it as a fifth-position shape gets to say so, and the shape
+      -- they play does not change because they said it.
+      local Bm = assert(voicing.parse("x79987", "Bm"))
+      local reframed = voicing.setBaseFret(Bm, 5)
+      assert.are.equal(5, voicing.baseFret(reframed))
+      assert.are.same(Bm.frets, reframed.frets)
+      assert.are.equal("x79987", voicing.toText(reframed))
+    end)
+
+    it("gives the framing back to the derivation when the override is cleared", function()
+      -- Slice 004 drops an override that has stopped framing the shape, but
+      -- there was no way to change one's mind about an override that still
+      -- works. Clearing it is that way back: the chord returns to deriving its
+      -- own framing, and reopening it later will not find a frozen window.
+      local Bm = voicing.setBaseFret(assert(voicing.parse("x79987", "Bm")), 5)
+      local derived = voicing.setBaseFret(Bm, nil)
+      assert.is_nil(derived.baseFret)
+      assert.are.equal(7, voicing.baseFret(derived))
+    end)
+
+    it("does not keep a window that cannot hold the shape, even dormant", function()
+      -- An open C cannot be framed from the ninth: its dots would sit above the
+      -- top of the diagram. Slice 004 already ignores such an override when it
+      -- draws, but STORING one lets it lie dormant and come back to life the
+      -- day the shape moves under it — a framing the user never chose,
+      -- reappearing weeks later. It is refused at the point of setting.
+      local C = assert(voicing.parse("x32010", "C"))
+      local refused = voicing.setBaseFret(C, 9)
+      assert.is_nil(refused.baseFret)
+      assert.are.equal(1, voicing.baseFret(refused))
+    end)
+  end)
+
   describe("re-typing the text of a chord that already exists", function()
     it("keeps a barre, which the text form cannot express", function()
       local existing = voicing.new({
@@ -189,6 +234,51 @@ describe("voicing", function()
       local retyped = assert(voicing.parse("x32010", "C", existing))
       assert.is_nil(retyped.baseFret)
       assert.are.equal(1, voicing.baseFret(retyped))
+    end)
+
+    it("preserves everything the text form cannot say", function()
+      -- THE GUARD SLICE 008 DEPENDS ON. The text field is re-parsed on every
+      -- keystroke, and a chord string can say only where the fingers are: it
+      -- has no way to write a barre, a finger number, or a framing the user
+      -- chose. If parsing REPLACED the voicing instead of merging into it,
+      -- nudging one string would silently delete all three — and the barre is
+      -- the one the user would notice a week later, in a diagram they trusted.
+      local existing = voicing.new({
+        frets = { 5, 7, 7, 6, 5, 5 },
+        fingers = { 1, 3, 4, 2, 1, 1 },
+        barres = { { fret = 5, from = 1, to = 6 } },
+        baseFret = 4,
+        name = "A",
+      })
+      local edited = assert(voicing.parse("577655", nil, existing))
+
+      assert.are.same({ 5, 7, 7, 6, 5, 5 }, edited.frets)
+      assert.are.same(existing.barres, edited.barres)
+      assert.are.same(existing.fingers, edited.fingers)
+      assert.are.equal(4, voicing.baseFret(edited))
+      assert.are.equal("A", edited.name)
+    end)
+
+    it("never damages the chord being edited, at any keystroke of the edit", function()
+      -- What the text field actually does: re-parse on every keystroke against
+      -- the voicing being edited. Every intermediate state of that has to
+      -- either answer with a voicing that still carries the barre, or refuse —
+      -- and it must never alter the chord it was handed, because a refusal
+      -- leaves the UI showing exactly that chord.
+      local F = voicing.new({
+        frets = { 1, 3, 3, 2, 1, 1 },
+        barres = { { fret = 1, from = 1, to = 6 } },
+        name = "F",
+      })
+      for n = 1, #"133215" do
+        local edited = voicing.parse(("133215"):sub(1, n), nil, F)
+        if edited then
+          assert.are.same(F.barres, edited.barres)
+          assert.are.equal("F", edited.name)
+        end
+        assert.are.same({ 1, 3, 3, 2, 1, 1 }, F.frets)
+        assert.are.same({ { fret = 1, from = 1, to = 6 } }, F.barres)
+      end
     end)
 
     it("takes the new name, so a rename is not a shape change", function()
@@ -230,6 +320,29 @@ describe("voicing", function()
       local edited = voicing.setFret(F, 3, 5)
       assert.are.equal("F", edited.name)
       assert.are.same(F.barres, edited.barres)
+    end)
+  end)
+
+  describe("naming a chord", function()
+    it("renames without rebuilding it, and asks for a new image", function()
+      -- The name field cannot be routed through `parse`: a name is typed while
+      -- the chord string next to it may be half-finished, and a rename must not
+      -- depend on the text field being parseable at that instant.
+      local F = voicing.new({
+        frets = { 1, 3, 3, 2, 1, 1 },
+        barres = { { fret = 1, from = 1, to = 6 } },
+        name = "F",
+      })
+      local renamed = voicing.setName(F, "F major")
+
+      assert.are.equal("F major", renamed.name)
+      assert.are.same(F.frets, renamed.frets)
+      assert.are.same(F.barres, renamed.barres)
+      -- The name is drawn on the diagram, so it is part of the fingerprint: a
+      -- rename has to produce a different file rather than leave REAPER showing
+      -- the picture with the old title on it.
+      assert.are_not.equal(voicing.fingerprint(F), voicing.fingerprint(renamed))
+      assert.are.equal("F", F.name)
     end)
   end)
 

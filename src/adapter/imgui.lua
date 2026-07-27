@@ -5,6 +5,12 @@
 --- into a PNG. That shared definition is what guarantees the grid the user
 --- clicks and the image they get cannot drift apart.
 ---
+--- The window's fields hold no chord logic either. Typing goes through
+--- `voicing.parse`, a name through `voicing.setName`, a framing through
+--- `voicing.canFrame` and `voicing.setBaseFret`; none of those rules is
+--- reimplemented here, and every one of them returns a NEW voicing, which is
+--- what keeps Cancel structurally safe.
+---
 --- IT IS ALSO THE ONLY PLACE IN THE PROJECT THAT KNOWS HOW ReaImGui IS LOADED.
 --- ReaImGui changed its entry point at 0.9: a script now asks the extension
 --- where its Lua shim lives and requires a numbered version of the API, where
@@ -36,6 +42,7 @@ local FUNCTIONS = {
   "Begin", "End", "SetNextWindowSize",
   "GetContentRegionAvail", "GetCursorScreenPos", "SameLine",
   "Button", "InvisibleButton", "IsItemClicked", "GetMousePos", "IsKeyPressed",
+  "InputText", "InputInt", "IsAnyItemActive",
   "GetWindowDrawList", "CalcTextSize",
   "DrawList_AddLine", "DrawList_AddRectFilled",
   "DrawList_AddCircle", "DrawList_AddCircleFilled", "DrawList_AddText",
@@ -61,7 +68,9 @@ local COLOURS = {
 }
 
 --- The window's initial size, and the smallest grid worth drawing.
-local WINDOW_W, WINDOW_H = 380, 470
+---
+--- Taller than the grid alone needs: three rows of controls sit above it.
+local WINDOW_W, WINDOW_H = 380, 560
 local MIN_GRID = 120
 
 --- Room under the grid for the button row.
@@ -253,6 +262,110 @@ end
 -- The window
 --------------------------------------------------------------------------------
 
+--- The window's editable state.
+---
+--- `voicing` is the value; `text` is the chord string as the user currently has
+--- it written. Two representations of one thing, which is the whole difficulty
+--- of this window — see `chordField`.
+--- @class GridState
+--- @field voicing Voicing
+--- @field text string
+
+--- The free-text name, which is drawn on the diagram and names the item.
+---
+--- Unlike the chord string, the name needs no buffer of its own: it is stored
+--- verbatim and read straight back, so there is no normalisation to fight the
+--- cursor with. Routing it through `voicing.setName` rather than `voicing.parse`
+--- is deliberate — a rename must not depend on the chord field next to it being
+--- parseable at that instant, and half-typed chord strings are normal.
+--- @param ImGui table
+--- @param ctx userdata
+--- @param state GridState
+local function nameField(ImGui, ctx, state)
+  local edited, typed = ImGui.InputText(ctx, "Name###name", state.voicing.name or "")
+  if edited then
+    state.voicing = voicing.setName(state.voicing, typed)
+  end
+end
+
+--- The chord string, synced with the grid.
+---
+--- THE FIELD AND THE VOICING ARE TWO WRITINGS OF ONE VALUE, and keeping them in
+--- step is where an app like this normally breaks. Rewrite the field from the
+--- voicing every frame and it fights the cursor and eats half-typed characters;
+--- never rewrite it and the grid stops saying what the user built.
+---
+--- THE RULE IS ABOUT WHEN, NOT ABOUT WHICH IS MASTER:
+---
+---   * WHILE THE USER IS TYPING, THE FIELD IS AUTHORITATIVE. Its contents are
+---     what they typed, character for character, and are never normalised back
+---     at them mid-word — so `x-3-2-0-1-0` is not rewritten to `x32010` under
+---     the cursor, even though the two mean the same chord.
+---   * WHEN THE VOICING MOVES BY ANY OTHER MEANS — a click on the grid — THE
+---     VOICING IS AUTHORITATIVE, and the field is rewritten from it. That
+---     rewrite lives in `grid`, at the one place a click changes the shape.
+---
+--- The field is therefore written from the voicing only on frames the user was
+--- not typing into it, and those two cases cannot both happen in one frame.
+---
+--- Every keystroke is parsed, and a parse that fails is DISCARDED IN SILENCE:
+--- half-typed input is the ordinary state of a field somebody is typing into,
+--- not an error to report, so the diagram simply goes on showing the last shape
+--- that was real. `voicing.parse` merges into the voicing being edited, so a
+--- barre — which no chord string can express — survives being retyped.
+--- @param ImGui table
+--- @param ctx userdata
+--- @param state GridState
+local function chordField(ImGui, ctx, state)
+  local edited, typed = ImGui.InputText(ctx, "Chord###chord", state.text)
+  if edited then
+    state.text = typed
+    local parsed = voicing.parse(typed, nil, state.voicing)
+    if parsed then
+      state.voicing = parsed
+    end
+  end
+end
+
+--- The fret the top of the grid sits at: derived, unless the user says
+--- otherwise.
+---
+--- The field always shows the framing IN FORCE — `voicing.baseFret` answers the
+--- derived value until there is an override and the override afterwards — so
+--- there is one number on screen rather than a derived one and a box that
+--- disagrees with it. The label says which of the two the user is looking at.
+---
+--- A value that cannot hold the shape is not offered: `voicing.canFrame` is
+--- asked first, and a refusal leaves the voicing alone, so the field snaps back
+--- rather than reframing the diagram somewhere the dots would not be visible.
+--- That question is asked of `core.voicing` and never answered here — a second
+--- copy of the five-fret rule in the UI is how the two drift apart.
+---
+--- The button is the way back to derived framing. Slice 004 drops an override
+--- that has stopped framing the chord, but until now there was no way to change
+--- one's mind about one that still works.
+--- @param ImGui table
+--- @param ctx userdata
+--- @param state GridState
+local function baseFretField(ImGui, ctx, state)
+  -- Whether the box is showing the user's number or the derived one is decided
+  -- by the SAME question that decides whether the diagram obeys it. A stored
+  -- override that has stopped framing its chord is ignored by `voicing.baseFret`
+  -- and must therefore not be labelled as the user's choice here either.
+  local mine = voicing.canFrame(state.voicing.frets, state.voicing.baseFret)
+  local label = mine and "First fret (yours)###base" or "First fret (auto)###base"
+
+  local edited, chosen = ImGui.InputInt(ctx, label, voicing.baseFret(state.voicing), 1, 1)
+  if edited and voicing.canFrame(state.voicing.frets, chosen) then
+    state.voicing = voicing.setBaseFret(state.voicing, chosen)
+  end
+
+  ImGui.SameLine(ctx)
+  if ImGui.Button(ctx, "Auto") then
+    state.voicing = voicing.setBaseFret(state.voicing, nil)
+  end
+end
+
 --- Draw the grid for the current voicing and act on a click in it.
 ---
 --- The geometry is entirely `core.layout`'s: this function decides how big a
@@ -261,7 +374,7 @@ end
 --- painted, so a click lands on what is displayed by construction.
 --- @param ImGui table
 --- @param ctx userdata
---- @param state { voicing: Voicing }
+--- @param state GridState
 local function grid(ImGui, ctx, state)
   local availW, availH = ImGui.GetContentRegionAvail(ctx)
   local size = math.max(MIN_GRID, math.min(availW, availH - FOOTER))
@@ -290,6 +403,11 @@ local function grid(ImGui, ctx, state)
     local index, fret = layout.cellAt(computed, mx - ox, my - oy)
     if index then
       state.voicing = voicing.toggleFret(state.voicing, index, fret)
+      -- THE ONE PLACE THE FIELD IS WRITTEN FROM THE VOICING. The user was
+      -- clicking, not typing, so there is no cursor to disturb and no
+      -- half-finished word to normalise — and this is how a shape built by
+      -- hand teaches its owner the chord string for it. See `chordField`.
+      state.text = voicing.toText(state.voicing)
     end
   end
 end
@@ -305,6 +423,10 @@ end
 --- anything. Backing out calls nothing at all, which is what makes "the item is
 --- unchanged" true rather than a promise: `core.voicing` never edits in place,
 --- so the voicing read off the item is still the one on the item.
+---
+--- The voicing that comes back carries the name, the shape and any framing the
+--- user chose, so `onApply` needs nothing else from the window. Everything the
+--- three fields do is an edit on that one value.
 --- @param opts { title: string, voicing: Voicing, onApply: fun(v: Voicing) }
 --- @return boolean ok
 --- @return string|nil err
@@ -314,7 +436,10 @@ function M.open(opts)
     return false, err
   end
 
-  local state = { voicing = opts.voicing }
+  local state = {
+    voicing = opts.voicing,
+    text = voicing.toText(opts.voicing),
+  }
   local ctx = ImGui.CreateContext(opts.title)
 
   local function frame()
@@ -332,6 +457,12 @@ function M.open(opts)
 
     local applied = false
     if visible then
+      -- The fields go above the grid, so the space the grid is given is what
+      -- they have left over: `grid` asks for the content region at its own
+      -- cursor position and sizes itself to fit.
+      nameField(ImGui, ctx, state)
+      chordField(ImGui, ctx, state)
+      baseFretField(ImGui, ctx, state)
       grid(ImGui, ctx, state)
       applied = ImGui.Button(ctx, "Apply")
       ImGui.SameLine(ctx)
@@ -344,7 +475,12 @@ function M.open(opts)
       ImGui.End(ctx)
     end
 
-    if ImGui.IsKeyPressed(ctx, ImGui.Key_Escape, false) then
+    -- Escape closes the window, EXCEPT while a field has the keyboard. In a
+    -- text field Escape means "undo what I just typed", and a user reaching for
+    -- that must not lose the whole chord instead. Now that the window has
+    -- fields, the unguarded check would do exactly that.
+    if not ImGui.IsAnyItemActive(ctx)
+      and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape, false) then
       stillOpen = false
     end
 

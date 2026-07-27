@@ -124,8 +124,9 @@ byte-for-byte identical, so nothing below is about the format. **There is no lon
       the extended state — so this also confirms they collapse into a single undo point rather than
       needing two presses.
 - [ ] **A name with a comma still round-trips.** Name a chord `C, second inversion` and reopen it.
-      The dialog is comma-separated, so this exercises `dialog.prompt`'s rejoin as well as the
-      storage escaping.
+      Deferred by slice 006, which removed the name field, and **live again from slice 007**, which
+      gives it one. It no longer exercises `dialog.prompt`'s rejoin — that is deleted — so it is now
+      purely a check on the storage escaping.
 
 ### Judgement call to confirm
 
@@ -264,28 +265,99 @@ machine. Nothing below has been run; `make verify` only parses it.
       string to the diagram every time a finger is removed. Confirm this reads correctly to a
       guitarist; if clearing to open feels more natural in practice, that is a one-line change in
       `core.voicing.toggleFret` and a spec.
-- [ ] **A NEW CHORD IS NAMED WITH ITS OWN CHORD STRING UNTIL SLICE 007.** The name came from the
-      native input dialog, which this slice removes, and the name field is slice 007. Rather than
-      keep a dialog in front of the window for one field, a chord created in this version falls
-      back to the rule that was already there for an unnamed chord: the title is its chord string,
-      so `x32010` is titled "x32010". Reopening a chord that already has a name keeps that name, so
-      nothing already applied loses its title. **This is a known one-slice gap, not a defect** —
-      please do not raise it as a bug, but do say if titling by chord string is actually preferable
-      to a free-text default.
+- [x] ~~**A NEW CHORD IS NAMED WITH ITS OWN CHORD STRING UNTIL SLICE 007.**~~ **Closed by slice
+      007** — the name has a field again, so the gap lasted exactly the one slice it was declared
+      for. The chord-string title survives as the fallback for a chord nobody names, which is
+      checked under slice 007 below.
 
 ### Checks above that this slice invalidates
 
-Work these with the new UI in mind rather than skipping them:
+**Mostly reversed by slice 007, which puts the text and name fields back.** Read this list with the
+slice 007 section below, which says which of them are live again and how.
 
-- Anything that says "type `x32010`" is now "click the shape in". The expected diagram is
-  unchanged, so the check still means something.
-- **Slice 004's "the dialog still fits with the longer chord label"** — dead. There is no dialog.
-- **Slice 004's "a comma-separated chord cannot be typed into this dialog"** — dead for the same
-  reason; the text field in slice 007 will have its own box and no comma problem.
-- **Slice 005's "a name with a comma still round-trips"** — cannot be performed until slice 007
-  gives the name a field. The storage escaping it was testing is specced, so it is a deferral
-  rather than a loss.
+- Anything that says "type `x32010`" was "click the shape in" for one slice. **Live again as
+  written** — there is a text field.
+- **Slice 004's "the dialog still fits with the longer chord label"** — dead, permanently. There is
+  no dialog, and the field's label is ImGui's to size.
+- **Slice 004's "a comma-separated chord cannot be typed into this dialog"** — the limitation is
+  gone: the field has its own box, so `10,12,12,11,10,10` now reaches the parser intact. **Reinstated
+  as a positive check** in the slice 007 section, since what was impossible is now expected to work.
+- **Slice 005's "a name with a comma still round-trips"** — **live again**: the name has a field.
+  It no longer exercises `dialog.prompt`'s rejoin, which is deleted, so it is now purely a check on
+  the storage escaping.
 - Every slice 004 check that needs a high-position chord (`x79987`, `10-12-12-11-10-10`,
-  `12-14-14-13-12-12`) can still be entered by clicking, but the grid only shows five frets at a
-  time and the framing follows the shape, so build the shape from its lowest fretted note upward.
-  If that turns out to be unreasonably fiddly by hand, do those checks after slice 007 instead.
+  `12-14-14-13-12-12`) is **easiest typed again** rather than clicked in from its lowest fretted
+  note. Do them that way.
+
+## Slice 007 — the text field, the name field and the fret override
+
+Version 0.10.0. Three controls above the grid: a chord string synced both ways with it, a free-text
+name, and the first fret of the window. Nothing here has been run either — REAPER is still not
+installed on the dev machine, and this slice adds three ReaImGui calls that have never executed.
+
+### The new API names
+
+`InputText`, `InputInt` and `IsAnyItemActive` are added to the checked list in
+`src/adapter/imgui.lua`. As with slice 006, a name this code got wrong reports itself BY NAME at
+load time — "This version of ReaImGui does not provide *name*" — rather than failing mid-frame.
+**If that message appears, note which name and the ReaImGui version**; the fix is local to that
+module.
+
+### Confirm on Windows
+
+- [ ] **Typing redraws the grid on every keystroke.** Type `x32010` into the Chord field one
+      character at a time. The diagram must follow along, and the intermediate states (`x`, `x3`,
+      `x32`…) must simply leave the last complete shape on screen — no error, no flicker, no
+      window that closes itself.
+- [ ] **Half-typed and nonsense text changes nothing and says nothing.** Type `x3201z`, then clear
+      the field entirely. The diagram must hold the last shape that parsed, and no message may
+      appear. This is deliberate: half-typed input is the normal state of a field somebody is
+      typing into. Say if the silence feels wrong in practice.
+- [ ] **Clicking the grid rewrites the chord string.** Click a shape in from scratch and watch the
+      field fill itself in. This is how a guitarist learns the string for a shape they only know
+      with their hands.
+- [ ] **The field is not rewritten under the cursor while typing.** Type `x-3-2-0-1-0`, slowly. It
+      must stay exactly as typed even though the chord it means is written `x32010` — the field
+      is only ever rewritten from the voicing by a CLICK on the grid, never mid-word. If characters
+      vanish, get reordered, or the caret jumps to the end, that is the bug this rule exists to
+      prevent and it is a real defect.
+- [ ] **A comma-separated chord can now be typed.** `10,12,12,11,10,10` must produce the same
+      diagram as `10-12-12-11-10-10`. Slice 004 could not do this because the native dialog ate
+      the commas; the field has its own box, so it should now work.
+- [ ] **The name is the diagram's title and the item's name.** Type a name, apply, and confirm it
+      is drawn on the diagram AND shows on the item in the arrange view and the Media Item Manager.
+- [ ] **A chord left unnamed is still titled with its own chord string.** That fallback survived
+      the name field; it is now a default rather than the only route.
+- [ ] **Renaming produces a NEW image file.** Apply a chord, reopen it, change only the name, apply
+      again. `chord-diagrams/` must gain a second PNG and the item must show the new title
+      immediately — the name is part of the fingerprint precisely so REAPER cannot show a stale
+      title.
+- [ ] **The first fret box fills itself in.** Type `x79987`. The box must read 7 and its label must
+      say the value is automatic, and the diagram must show `7fr`.
+- [ ] **Overriding it reframes the diagram and moves no fingers.** With `x79987` on screen, set the
+      first fret to 5. The marker must read `5fr`, the dots must move down two cells, and the chord
+      string must still read `x79987`. Applying must produce a diagram framed from the fifth.
+- [ ] **Auto hands the framing back.** Press Auto and the box must return to 7 and the label to
+      automatic. Until this slice there was no way to undo an override that still worked.
+- [ ] **Escape inside a text field does not close the window.** Click into the Name field, type,
+      press Escape. The window must stay open — Escape in a field means "undo what I typed", and
+      losing the whole chord to it would be a defect. Escape with no field focused must still close
+      the window, as in slice 006.
+- [ ] **The window is tall enough.** It opens at 380x560 to make room for three rows of controls
+      above the grid. If the grid is cramped or the Apply row needs scrolling at the default size,
+      say so — `WINDOW_W`/`WINDOW_H` in `src/adapter/imgui.lua` is the one place to change it.
+
+### Judgement calls to confirm
+
+- [ ] **The first fret box refuses a value that cannot hold the shape, by doing nothing.** With
+      `x79987` on screen (frets 7 to 9), nudge the box down to 4: the window 4–8 cannot show the
+      ninth fret, so the value snaps straight back to what it was. The span is fixed at five, so
+      there is no framing to offer — but a control whose arrows sometimes appear dead needs a
+      guitarist's opinion. The alternative is to clamp to the nearest usable fret, which silently
+      gives a framing that was not asked for. Say which reads better.
+- [ ] **Typing merges rather than replaces — and this is the one to take seriously.** It cannot be
+      seen yet, because nothing renders a barre until slice 008. It is specced
+      (`spec/core/voicing_spec.lua`, "preserves everything the text form cannot say"), and the
+      thing to watch for after slice 008 lands is: build a barre chord, nudge one string via the
+      TEXT field, and confirm the barre is still there. If the merge were ever lost, that is what
+      silent data loss would look like.

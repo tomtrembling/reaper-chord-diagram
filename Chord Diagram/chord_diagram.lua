@@ -1,6 +1,6 @@
 --[[
 @description Chord Diagram
-@version 0.9.0
+@version 0.10.0
 @author Tom Trembling
 @about
   Capture a guitar chord voicing and pin its diagram to a point in the timeline,
@@ -15,20 +15,31 @@
     - Save the project first; the image is stored beside it.
     - Insert an empty item on a track and select exactly one.
     - Run this action. A window opens with a fretboard grid.
-    - Click a cell to place a finger; click the same cell again to remove it.
-    - Click above the nut to ring a string open, and again to mute it.
+    - Type the chord as a string — x32010, or 10-12-12-11-10-10 above the ninth
+      fret — and the grid redraws as you type.
+    - Or click a cell to place a finger and click it again to remove it, click
+      above the nut to ring a string open or mute it, and the chord string
+      writes itself.
+    - Type a name. It is drawn as the diagram's title and becomes the item's
+      name, so the chord is findable in the Media Item Manager.
+    - The first fret box says where the top of the grid sits. It fills itself
+      in; change it to frame the chord where you think of it, and press Auto to
+      hand the choice back.
     - Press Apply to write the diagram to the item, or Cancel or Escape to back
       out and leave the item exactly as it was.
     - Run it again on the same item to edit the chord: the voicing is stored on
       the item, so it comes back already on the grid, and copying the item
       copies the chord with it.
 
-  A chord reaching past the fifth fret frames itself from its lowest fretted
-  fret and says which fret that is. A text field for typing a chord string, a
-  name field and barres are the next slices.
+  Barres are the next slice. They cannot be written in a chord string, so
+  retyping the text of a chord that has one keeps it.
 
   Requires js_ReaScriptAPI and ReaImGui.
 @changelog
+  0.10.0 A text field for the chord string, synced both ways with the grid: type
+        and the grid redraws, click and the text rewrites itself. Half-typed
+        text changes nothing rather than complaining. A name field is back, and
+        the diagram's first fret can be set by hand or left to work itself out.
   0.9.0 The native input dialog is replaced by a window with a clickable
         fretboard grid, drawn from the same layout as the exported image.
         Clicking a cell places or clears a finger; clicking above the nut rings
@@ -176,14 +187,11 @@ end
 local function apply(v)
   -- The name is drawn on the diagram and is what identifies the item in REAPER,
   -- so an unnamed chord falls back to its own chord string rather than nothing.
-  --
-  -- UNTIL SLICE 007 THAT FALLBACK IS THE ONLY WAY A NEW CHORD IS NAMED. The
-  -- native input dialog carried the name and it is gone; the window's name
-  -- field is the next slice. A chord reopened for editing keeps whatever name
-  -- it already has, because the stored voicing carries it, so this only affects
-  -- chords created in this version.
+  -- The window has a name field again, so this is now what it was always meant
+  -- to be — a default for someone who did not want to name the chord — rather
+  -- than the only way one could be named.
   if v.name == "" then
-    v.name = voicingOf.toText(v)
+    v = voicingOf.setName(v, voicingOf.toText(v))
   end
 
   local filename = voicingOf.fingerprint(v) .. ".png"
