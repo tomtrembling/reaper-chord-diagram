@@ -52,6 +52,13 @@ recorded. When something fails, run the diagnostics action again and paste the r
 Judgement calls. Each one names the alternative and where the change would go, so the answer is
 "keep" or a one-line edit. None of them needs REAPER; several are easier with T43's screenshots.
 
+**A `Triage —` line marks the items that change what the tester sees or does**, with a
+recommendation and its reasoning, so those can be confirmed rather than reasoned out from scratch.
+D9, D10, D12, D14–D16 (report and sweep wording), D18–D19 (packaging) and D20–D21 (style) carry no
+triage line: none of them alters the session, and D20–D21 belong to the slice 011 pass. Where the
+recommendation is "keep", the item is still worth reading — several are keeps *on principle* rather
+than on balance, and that distinction is what stops a later slice quietly reversing them.
+
 ## Test fixtures
 
 - [ ] **D1 — `spec/fixtures/item_chunks.lua` is reconstructed, not captured.** The PRD asks for
@@ -64,6 +71,12 @@ Judgement calls. Each one names the alternative and where the change would go, s
       protects that today is a spec saying an unrecognised line is carried through unchanged.
       **Decide whether to ship on reconstructed fixtures or hold until T42 returns real ones.**
 
+      **Triage — ship, and treat T42 as hardening.** Holding costs the whole pass and buys nothing:
+      the fixtures cannot be captured without a tester at a REAPER install, and the tester cannot
+      be at one without a build. Shipping is how the fixtures get captured. The exposure is bounded
+      by T5 and T30 — if `core.chunk` corrupts an item, an item with a chord on it stops displaying
+      or stops undoing, and both are early in Part 2 on a throwaway project.
+
 ## Entry and interaction
 
 - [ ] **D2 — Clearing a dot returns the string to MUTED, not OPEN.** Clicking a dot off is a
@@ -71,23 +84,45 @@ Judgement calls. Each one names the alternative and where the change would go, s
       says so above the nut. Clearing to open would silently add a ringing string to the diagram
       every time a finger is removed. Alternative is a one-line change in `core.voicing.toggleFret`
       plus a spec.
+
+      **Triage — keep.** The PRD's rule that the plugin never claims a fingering the user did not
+      choose applies to open strings as much as to barres: an open string is a positive claim that
+      a string rings out, and deleting a finger is not that claim. Answerable without screenshots.
 - [ ] **D3 — The first fret box refuses a value that cannot hold the shape by doing nothing.** With
       `x79987` (frets 7–9) on screen, nudging the box to 4 snaps it straight back: the window 4–8
       cannot show the ninth fret and the span is fixed at five. The cost is arrows that sometimes
       look dead. The alternative is clamping to the nearest usable fret, which silently gives a
       framing nobody asked for.
+
+      **Triage — keep, and let T20 decide whether it needs a signal.** Refusing is right; the only
+      live question is whether refusing *silently* reads as a broken control. If the tester reports
+      dead arrows, the cheap fix is showing the usable range beside the box, not clamping.
 - [ ] **D4 — A click on a cell the bar covers removes the bar, so those cells cannot take a dot
       while it is there.** The alternative was a modifier or the right mouse button — a gesture
       nothing else in this window uses and nobody would find. The question is whether reaching for
       a dot under a bar and losing the bar instead happens in practice.
+
+      **Triage — keep; the trade-off is smaller than it reads.** The cells a bar covers are the
+      cells at the bar's own fret, and a dot there is already implied by the bar — the fingers that
+      make a barre chord distinctive sit at *higher* frets, which the bar does not touch. So the
+      gesture being given up adds nothing to a diagram. Worth rewording the item to say that,
+      rather than leaving it standing as a live cost.
 - [ ] **D5 — Dragging on a blank neck draws a bar with no dots under it.** Laying a bar moves no
       finger, so a bar over still-muted strings shows a bar above six crosses, which looks odd.
       That oddity is the price of the guarantee that laying a bar never flattens an F. If the empty
       state reads as broken, the fix is to fret only the strings currently MUTED, a rule in
       `core.voicing.setBarre` plus a spec. See T43's blank-neck screenshot.
+
+      **Triage — keep.** The proposed alternative is inference: the plugin would be deciding that
+      six muted strings are meant to sound because a bar crossed them. That is the rule the PRD
+      forbids, and a bar over crosses is a transient state during entry rather than something
+      anyone applies. Worth the screenshot, but the answer should not depend on it.
 - [ ] **D6 — A drag across the row above the nut does nothing.** There are no barres above the nut,
       and making a sideways drag up there mute or ring several strings at once invents a gesture
       nobody asked for. Confirm doing nothing is right rather than surprising.
+
+      **Triage — keep.** A drag that does nothing is recoverable in one click; an invented
+      multi-string mute gesture is a diagram claiming strings the user never set. Asymmetric.
 - [ ] **D7 — The residual risk in telling a click from a drag.** A press has to land about half a
       string gap off centre AND wobble across the boundary to produce an accidental two-string bar.
       T21 asks the tester to say if it ever happens; if it does, the fix is a minimum travel in
@@ -98,6 +133,11 @@ Judgement calls. Each one names the alternative and where the change would go, s
       frames from the seventh and still draws an open ring above the A string. That is how
       songbooks notate it, but it is a call — does it read correctly, or like a mistake? Screenshot
       in T43.
+
+      **Triage — keep, and close it rather than carrying it.** This is not really a trade-off:
+      showing the nut for `x-0-9-9-7-x` would put the fretted notes outside a five-fret window, so
+      the alternative does not exist. The only thing a screenshot can add is whether the open ring
+      is legible that far from the nut, which is a slice 011 question, not this one.
 
 ## Diagnostics and reporting
 
@@ -112,6 +152,11 @@ Judgement calls. Each one names the alternative and where the change would go, s
       the encoded token, not a chord string. It is there because it is the fact that says whether
       persistence worked, and it decodes by eye. Noise, or worth the line?
 
+      **Triage — keep.** This project's whole debugging story is a paste from a machine the
+      developer cannot reach. That token is the one line distinguishing "the chord was never
+      stored" from "it was stored and not read back", which is the first fork in almost every
+      persistence bug. Nothing else in the report answers it.
+
 ## The sweep
 
 - [ ] **D12 — The sweep visits EVERY item, not only empty ones.** It decides what to do from what
@@ -123,10 +168,18 @@ Judgement calls. Each one names the alternative and where the change would go, s
       a working install is. The cost is that a machine with js_ReaScriptAPI but no ReaImGui is
       refused a recovery it could technically perform. The alternative is per-action dependency
       lists — more machinery than the case seems to warrant, but that is the fix if it ever bites.
+
+      **Triage — keep.** It cannot bite in practice: the editor is the only thing that creates
+      chords and it requires ReaImGui, so a machine without ReaImGui has no diagrams to recover.
 - [ ] **D14 — A failure part way through does not stop the sweep,** and the failure count is
       reported separately rather than folded into the regenerated total. Stopping at the first
       failure would leave the rest of an already-broken project broken. Read the wording: honest,
       or alarming?
+
+      **Triage — keep the behaviour; read the wording with T39 in hand.** Continuing is plainly
+      right for an action whose entire purpose is running against a project that is already
+      damaged. The wording is the only open part, and it reads better next to a real report than
+      in the abstract.
 - [ ] **D15 — A silent repair that fails stays silent.** It is recorded for the diagnostics action
       but no message is shown, because the user asked to edit a chord and can still do that — Apply
       renders through the same path and reports properly. Right trade?
@@ -142,6 +195,11 @@ Judgement calls. Each one names the alternative and where the change would go, s
       (spike)* next to the real one invites installing the wrong one. It stays in the repository as
       the reference implementation of the REAPER call sequences it proved. Overturn this if the
       tester should still be able to run it.
+
+      **Triage — keep, and note it is already live.** 0.15.0 is pushed, so a synchronise will
+      offer to uninstall the spike package on the tester's machine (T4 expects this). If the spike
+      is ever wanted again it is one `@noindex` removal away, but the case for it is gone: every
+      finding it produced is now in shipped code.
 - [ ] **D18 — One package rather than three.** Three packages each providing `src/` is what
       `reapack-index` calls a conflict, and it resolves a conflict by silently dropping a package
       from the index while still exiting 0. One package also means the tester installs once and the
@@ -182,6 +240,14 @@ Judgement calls. Each one names the alternative and where the change would go, s
       3. **Left-align both** — drop the centring from `paint` in `src/adapter/imgui.lua`. Cheapest,
          and the only option that needs no REAPER to verify, but it makes both backends worse in
          order to make them agree.
+      **Triage — provisionally option 1, confirm against T27's screenshot.** Option 2 spends the
+      only text sequence ever proven on Windows to buy centring, on a machine that cannot test the
+      replacement; that is the same bet slice 002 spent four tester runs winning. Option 3 makes
+      both backends worse to make them agree, which is agreement without value. Option 1 costs one
+      edit to the title's box in `core.layout` and is reversible. The one thing that would overturn
+      it is T27 reporting the title *clipped* rather than merely left — a box is also a promise the
+      string fits inside it, and a clipped title is a defect rather than a placement preference.
+
       Whichever it is, the alignment contract is now written down in the TEXT section of
       `src/core/layout.lua` and should be updated with it.
 
