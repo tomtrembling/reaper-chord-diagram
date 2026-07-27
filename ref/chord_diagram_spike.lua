@@ -2,7 +2,15 @@
 @description Chord Diagram (spike)
 @version 0.5.0
 @author Tom Trembling
+@noindex
 @about
+  NOT SHIPPED. This is the slice 002 tracer bullet, kept as the reference
+  implementation of the REAPER call sequences it proved on the tester's
+  machine. It lives in `ref/` rather than in the `Chord Diagram/` action
+  folder, and carries `@noindex`, so ReaPack neither offers it nor installs
+  it: a second "Chord Diagram" package sitting next to the real one is an
+  invitation to install the wrong one. Read it, copy from it, do not ship it.
+
   Tracer bullet for the chord diagram plugin. Renders a HARDCODED voicing to
   PNGs and attaches them to the selected empty items.
 

@@ -1,7 +1,8 @@
 --[[
 @description Chord Diagram: copy diagnostics
-@version 0.13.0
+@version 0.14.0
 @author Tom Trembling
+@noindex
 @about
   Copies a plain-text report about the Chord Diagram plugin to the clipboard, so
   a problem can be reported without being walked through it.
@@ -15,9 +16,27 @@
 
   Nothing is changed by running this.
 @changelog
+  0.14.0 No change; released alongside Chord Diagram 0.14.0.
   0.13.0 No change; released alongside Chord Diagram 0.13.0.
   0.12.0 First release, alongside Chord Diagram 0.12.0.
 --]]
+
+--------------------------------------------------------------------------------
+-- Why @noindex
+--
+-- This action ships as part of the Chord Diagram package, listed in that
+-- script's `@provides` as an additional `[main]` file. `reapack-index` treats
+-- any file carrying a `@version` tag as a package in its own right, and a file
+-- that is BOTH its own package and provided by another is a conflict — one the
+-- indexer reports as a warning and then resolves by silently dropping the whole
+-- Chord Diagram package from the index. `@noindex` says "not a package", which
+-- leaves the version and changelog above readable by a human without them
+-- meaning anything to ReaPack.
+--
+-- `@version` stays because `spec/header_version_spec.lua` asserts every shipped
+-- action agrees with `core.version.CURRENT`, and the diagnostics report is the
+-- place a wrong version would do the most damage.
+--------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
 -- Module loading

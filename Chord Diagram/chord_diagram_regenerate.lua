@@ -1,7 +1,8 @@
 --[[
 @description Chord Diagram: regenerate missing diagrams
-@version 0.13.0
+@version 0.14.0
 @author Tom Trembling
+@noindex
 @about
   Rebuilds every chord diagram image that has gone missing from this project,
   for when a whole folder has disappeared — a project copied to another machine
@@ -22,8 +23,13 @@
   skipped, and a chord this version cannot read is reported and NOT written to.
   The whole sweep is one undo step.
 @changelog
+  0.14.0 No change; released alongside Chord Diagram 0.14.0.
   0.13.0 First release, alongside Chord Diagram 0.13.0.
 --]]
+
+-- `@noindex` above: this action is provided by the Chord Diagram package rather
+-- than being a package itself. See the note in `chord_diagram_diagnostics.lua`
+-- for what goes wrong without it.
 
 --------------------------------------------------------------------------------
 -- Module loading

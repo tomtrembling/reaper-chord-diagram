@@ -1,7 +1,12 @@
 --[[
 @description Chord Diagram
-@version 0.13.0
+@version 0.14.0
 @author Tom Trembling
+@provides
+  [main] chord_diagram_diagnostics.lua
+  [main] chord_diagram_regenerate.lua
+  [nomain] ../src/core/*.lua > src/core/
+  [nomain] ../src/adapter/*.lua > src/adapter/
 @about
   Capture a guitar chord voicing and pin its diagram to a point in the timeline,
   without leaving REAPER.
@@ -51,6 +56,10 @@
 
   Requires REAPER 6.44 or newer, js_ReaScriptAPI and ReaImGui 0.9 or newer.
 @changelog
+  0.14.0 Packaging fix: installing the plugin now installs the modules the
+        actions are built from, so a fresh install runs. Every earlier release
+        shipped the action scripts alone and failed on their first `require`.
+        All three actions are now one package, installed and updated together.
   0.13.0 Missing diagrams repair themselves. Opening a chord whose image file
         has gone rebuilds it silently before the window opens, and a third
         action, "Chord Diagram: regenerate missing diagrams", rebuilds every
@@ -94,8 +103,16 @@
 -- Module loading
 --
 -- The pure Lua lives in src/, which is not next to this file in the repository
--- but may be next to it once installed. Both candidates go on the path so the
--- script runs from either layout; packaging decides which one is real.
+-- but IS next to it once installed: the `@provides` header above retargets
+-- `../src/core/*.lua` to `src/core/`, so ReaPack lays the modules down inside
+-- this action's own folder. The first candidate below is therefore the real one
+-- on an installed copy; the second is kept so the script also runs straight
+-- out of a clone of the repository.
+--
+-- The retarget is deliberate. `@provides` will happily emit an install path of
+-- `../src/...`, which would scatter the modules a level above the package's own
+-- folder; keeping everything under the folder ReaPack owns means an uninstall
+-- takes all of it and nothing of anyone else's.
 --------------------------------------------------------------------------------
 
 local SEP = package.config:sub(1, 1)

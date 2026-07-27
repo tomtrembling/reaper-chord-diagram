@@ -22,3 +22,11 @@ files["spec"] = {
 files["Chord Diagram"] = {
   read_globals = { "reaper" },
 }
+
+-- The slice 002 spike, kept as the reference implementation of the REAPER call
+-- sequences it proved and deliberately NOT shipped. It is a REAPER entry point
+-- like the action scripts, so it gets the same allowance, and it stays under
+-- the lint so a reference nobody can run does not quietly rot.
+files["ref"] = {
+  read_globals = { "reaper" },
+}

@@ -20,9 +20,10 @@ re-reading the slice.
 
 ## Slice 003 — typed chord to a real rendered diagram
 
-The action is `Chord Diagram/chord_diagram.lua` (the old `chord_diagram_spike.lua` is still in the
-repository as the reference implementation). It needs `src/` alongside it once installed — see the
-packaging note at the end.
+The action is `Chord Diagram/chord_diagram.lua`. The old spike now lives at
+`ref/chord_diagram_spike.lua` and is no longer packaged. Packaging is settled — see the *Packaging
+and delivery* section at the end, which must be worked through FIRST, since nothing else in this
+queue can be checked until the tester has a working install.
 
 ### Must be captured from REAPER — a spec depends on it
 
@@ -70,10 +71,9 @@ packaging note at the end.
 
 ### Packaging — for the orchestrator, not the tester
 
-- [ ] **Decide how `src/` reaches the installed script.** The plugin is no longer one file. The
-      entry script puts both `<script dir>/src` and `<script dir>/../src` on `package.path`, so
-      either layout works: ReaPack can install the modules beside the script, or one directory up.
-      Nothing was changed in `index.xml` and `make index` was not run.
+- [x] ~~**Decide how `src/` reaches the installed script.**~~ **Settled at 0.14.0** — one package,
+      `@provides` retargeting the modules beside the scripts. See *Packaging and delivery* at the
+      end of this file for what the tester has to confirm.
 
 ## Slice 005 — persistence and round-trip editing
 
@@ -645,3 +645,81 @@ a throwaway copy of a project, not on anything the tester cares about.
       unreadable chord will leave an error behind in the diagnostic report even though the sweep
       itself succeeded. Consistent with "nothing clears the last error", but say if it reads as a
       failure that did not happen.
+
+---
+
+## Packaging and delivery — do this one FIRST
+
+Every release before 0.14.0 shipped the action scripts **without** the modules under `src/`, so a
+fresh install failed on its first `require`. If the tester has an older install, that is why.
+
+Version 0.14.0 makes the whole plugin one ReaPack package: `chord_diagram.lua` is the package, and
+its `@provides` header carries the other two actions and the whole of `src/` with it. The modules
+are retargeted into the package's own folder, so an installed copy should look like this:
+
+```
+<REAPER resource path>/Scripts/<repository name>/Chord Diagram/
+    chord_diagram.lua
+    chord_diagram_diagnostics.lua
+    chord_diagram_regenerate.lua
+    src/core/*.lua        (7 files)
+    src/adapter/*.lua     (9 files)
+```
+
+Find the resource path with **Options → Show REAPER resource path in explorer/finder**.
+
+### The install itself
+
+- [ ] **A FRESH import, not a synchronise.** In ReaPack, remove any existing *Chord Diagram*
+      repository first (**Extensions → ReaPack → Manage repositories**, select it, **Remove**), then
+      **Import repositories** with
+      `https://github.com/tomtrembling/reaper-chord-diagram/raw/main/index.xml`. A stale local copy
+      of the index is the thing most likely to make this look broken when it is not.
+- [ ] **Exactly ONE package appears** in **Browse packages**, called *Chord Diagram*, at version
+      **0.14.0**. The old *Chord Diagram (spike)* package must be **gone** — it has been removed from
+      the index. If ReaPack lists it as obsolete and offers to uninstall it, accept.
+- [ ] **All three actions appear** in **Actions → Show action list** after installing that one
+      package. Search `chord_diagram`. Expect three entries, not one.
+- [ ] **Note the exact names REAPER shows them under** and report them back. The README currently
+      lists both the filename and the `@description` because which of the two REAPER displays for a
+      ReaPack-installed script was never confirmed on a running install. If it shows filenames only,
+      the README table should drop the descriptions.
+- [ ] **The modules landed where the scripts look for them.** Open the resource path and confirm the
+      `src/core/` and `src/adapter/` folders are inside the `Chord Diagram` folder, alongside the
+      three scripts, with 7 and 9 `.lua` files in them. If they are instead a level ABOVE — beside
+      the `Chord Diagram` folder rather than inside it — the plugin will still run (both locations
+      are on `package.path`), but say so, because it means ReaPack resolved the install target
+      differently from the way `reapack-index` wrote it and the retarget can be dropped.
+- [ ] **Each of the three actions runs without a `require` error.** Running any of them and getting
+      `module 'core.voicing' not found` — or any other `module ... not found` — means the modules did
+      not install. That is the whole point of this release; report it immediately and do not work
+      through the rest of the queue.
+- [ ] **Start with the diagnostics action.** It is the one with no preconditions: nothing needs to be
+      selected and it changes nothing. If it produces a report, the modules loaded. Keep that report
+      — it names the resolved paths, which answers the previous two items on its own.
+
+### The update path
+
+- [ ] **A synchronise from an older install also works.** On a machine that already had 0.13.0 (or
+      the spike), run **Extensions → ReaPack → Synchronise packages** rather than a fresh import, and
+      confirm it pulls 0.14.0 and its modules. Fresh imports and updates take different code paths in
+      ReaPack, and the tester's real machines will be doing the second one from now on.
+- [ ] **Uninstalling takes everything with it.** Uninstall *Chord Diagram* in ReaPack and confirm the
+      `src/` folders go too, leaving no orphaned files. The modules were deliberately retargeted
+      inside the package's folder so that this works; if anything is left behind, say what.
+
+### Decisions to confirm or overturn
+
+- [ ] **The spike is no longer shipped.** `chord_diagram_spike.lua` moved to `ref/` and carries
+      `@noindex`, so it is neither offered nor installed. The reasoning: it was superseded at 0.6.0,
+      its findings are recorded in issue 002 and in its own header, and a second package called
+      *Chord Diagram (spike)* sitting next to the real one in the tester's package list is an
+      invitation to install the wrong one. It is still in the repository as the reference
+      implementation of the REAPER call sequences it proved. Overturn this if the spike is still
+      wanted as something the tester can run.
+- [ ] **One package rather than three.** The alternative was three packages, one per action, each
+      providing the modules — which `reapack-index` rejects: two packages claiming the same file is a
+      conflict, and it resolves the conflict by silently dropping a package from the index while
+      still exiting 0. One package also means the tester installs once and the three actions can
+      never be at different versions. The cost is that the three actions cannot be installed
+      separately, which nobody has asked for.

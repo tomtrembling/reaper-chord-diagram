@@ -12,12 +12,12 @@
 local version = require("core.version")
 
 --- The directory ReaPack installs actions from.
+---
+--- Everything in it ships, and only what ships is in it. The slice 002 spike
+--- used to sit here too and had to be named as an exception; it now lives in
+--- `ref/`, which is what let that exception go. Anything put back here is a
+--- shipped action and is checked as one.
 local ACTIONS = "Chord Diagram"
-
---- The spike is a SEPARATE ReaPack package, frozen at the version it was signed
---- off at in slice 002 and kept only as the reference implementation. It is not
---- part of the plugin and does not follow its version.
-local NOT_THE_PLUGIN = { ["chord_diagram_spike.lua"] = true }
 
 --- Every action script ReaPack ships as part of the plugin.
 ---
@@ -30,7 +30,7 @@ local function actionScripts()
     return found
   end
   for name in ls:lines() do
-    if name:match("%.lua$") and not NOT_THE_PLUGIN[name] then
+    if name:match("%.lua$") then
       found[#found + 1] = ACTIONS .. "/" .. name
     end
   end
