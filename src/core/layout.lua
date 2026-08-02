@@ -46,9 +46,31 @@
 ---     the extension's published source, not remembered. It therefore draws
 ---     from the top left of the box and the box acts as a clip.
 ---
---- So a box is also a PROMISE THAT THE STRING FITS LEFT-ALIGNED IN IT: give
---- text a box it only fits in when centred and the LICE backend will clip it.
---- The known asymmetry, and the fix, are in `issues/hitl-queue.md` (T27, A5).
+--- The tester confirmed all of that on Windows against 0.15.0 and judged the
+--- left-aligned export tolerable, which settles it: THE ASYMMETRY STAYS AND THE
+--- BOXES ARE CHOSEN AROUND IT. So a text box has TWO load-bearing edges, and a
+--- box is only well chosen when both of them are somewhere the string is wanted:
+---
+---   * ITS CENTRE is where the string sits on screen.
+---   * ITS TOP LEFT is where the string starts in the PNG.
+---
+--- A box spanning the whole canvas satisfies neither honestly — it centres on
+--- screen by accident of the canvas being symmetrical, and it starts the exported
+--- string hard against the image edge, which is nowhere anybody chose. The title
+--- and the position marker are therefore given boxes whose left edge is a real
+--- landmark: the title's is the grid's own span, so the exported title begins
+--- over the low E string and still centres on screen because the grid is centred;
+--- the marker's is the gutter inset by a stroke at each side, so the exported
+--- marker clears the image edge and stops short of the strings.
+---
+--- A box is also a PROMISE THAT THE STRING FITS LEFT-ALIGNED IN IT: give text a
+--- box it only fits in when centred and the LICE backend will clip it. That
+--- promise is what the boxes below are sized by, and it is why the marker's box
+--- was moved rather than narrowed — `12fr` all but fills the gutter already, so
+--- there was no width to give away. Text that outgrows its box is a job for the
+--- slice 011 style pass, which owns text sizing; nothing here can measure a
+--- string in order to shrink it.
+--- The full write-up of the asymmetry is in `issues/hitl-queue.md` (T27, A5).
 local voicing = require("core.voicing")
 
 local M = {}
@@ -159,12 +181,19 @@ function M.compute(v, width, height)
   -- out of view: with the nut drawn, the window can only start at the first
   -- fret and saying so would be noise. It sits on the first cell, so the fret it
   -- names is the one the cell beside it is.
+  --
+  -- Its box is the gutter, inset by one stroke at each side rather than started
+  -- at the canvas edge: the LICE backend draws from the box's left edge, and
+  -- text touching the edge of the image is a placement nobody chose. The inset
+  -- is symmetrical, so the box is also centred in the gutter, which is where the
+  -- ImGui backend then puts it. The WIDTH is unchanged by the move — `12fr` all
+  -- but fills the gutter at this size, and a narrower box would clip it (T14).
   if not nutInView then
     local h = g.fretGap * POSITION_HEIGHT
     add({
       kind = "text", role = "position", colour = "ink",
       text = string.format("%dfr", g.baseFret),
-      x = 0, y = cellY(g, 1) - h / 2,
+      x = M.STROKE, y = cellY(g, 1) - h / 2,
       w = g.left - M.STROKE * 2, h = h,
       size = h, align = "centre",
     })
@@ -264,11 +293,25 @@ function M.compute(v, width, height)
 
   -- Title. Its band ends well above the marker row; that clearance was tuned by
   -- eye in slice 002 after the name and the grid crossed over.
+  --
+  -- ITS BOX IS THE GRID'S OWN SPAN, not the whole canvas. The LICE backend draws
+  -- from the left edge of the box, so that edge decides where the exported title
+  -- starts, and the low E string is a landmark on the diagram where the canvas
+  -- edge is not — a title hard against the edge of the image is a placement
+  -- nobody chose. On screen nothing moves: the grid is centred on the canvas, so
+  -- a box spanning it has the same centre the full-width box had, and the ImGui
+  -- backend goes on centring the title exactly where it did.
+  --
+  -- The cost is that the box is the clip rectangle, so a long name now runs out
+  -- of room at the top E rather than at the edge of the image. That is the
+  -- promise a box makes (see TEXT above); sizing a title to fit belongs to the
+  -- slice 011 style pass.
   if v.name and v.name ~= "" then
     local p = M.PROPORTIONS
     add({
       kind = "text", role = "title", colour = "ink", text = v.name,
-      x = 0, y = p.TITLE_TOP, w = 1, h = p.TITLE_BOT - p.TITLE_TOP,
+      x = p.GRID_LEFT, y = p.TITLE_TOP,
+      w = p.GRID_RIGHT - p.GRID_LEFT, h = p.TITLE_BOT - p.TITLE_TOP,
       size = p.TITLE_BOT - p.TITLE_TOP, weight = "bold", align = "centre",
     })
   end

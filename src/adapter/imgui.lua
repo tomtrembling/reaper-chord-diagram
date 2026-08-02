@@ -360,11 +360,18 @@ end
 --- The field is therefore written from the voicing only on frames the user was
 --- not typing into it, and those two cases cannot both happen in one frame.
 ---
---- Every keystroke is parsed, and a parse that fails is DISCARDED IN SILENCE:
---- half-typed input is the ordinary state of a field somebody is typing into,
---- not an error to report, so the diagram simply goes on showing the last shape
---- that was real. `voicing.parse` merges into the voicing being edited, so a
---- barre — which no chord string can express — survives being retyped.
+--- EVERY KEYSTROKE IS PARSED AND THE GRID FOLLOWS IT. A part-typed chord is a
+--- chord in progress, not an error: `voicing.parse` reads the positions typed so
+--- far and leaves the strings past them unfingered, so the shape walks in from
+--- the low E as it is typed and walks back out on backspace. The tester's report
+--- against 0.15.0 is why — a grid that only moved when the sixth character
+--- landed is not the "see immediately" the PRD asked for.
+---
+--- A parse that fails is still DISCARDED IN SILENCE: nonsense typed into a field
+--- somebody is working in is ordinary, not an error to report, so the diagram
+--- goes on showing the last shape that read. `voicing.parse` merges into the
+--- voicing being edited, so a barre — which no chord string can express —
+--- survives being retyped.
 --- @param ImGui table
 --- @param ctx userdata
 --- @param state GridState

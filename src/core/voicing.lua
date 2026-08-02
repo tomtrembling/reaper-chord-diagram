@@ -48,9 +48,10 @@ local SEPARATORS = "%s,%-"
 ---
 --- Runs of separators collapse and leading and trailing ones are ignored, so a
 --- half-typed `10-12-` yields the two positions typed so far rather than an
---- empty one. Nothing here rejects anything: a token count that does not match
---- the instrument, or a token that is not a position, is the caller's error to
---- report.
+--- empty one — a trailing separator says a fret is coming, not that one is
+--- missing. Nothing here rejects anything and nothing here counts: how many
+--- positions make a chord, and what a short count means, is `M.parse`'s
+--- business.
 --- @param text string
 --- @return string[]
 local function tokenise(text)
@@ -88,12 +89,38 @@ end
 --- Returns nil and a message the user can act on if the string cannot be read,
 --- so callers can refuse the input rather than write a half-understood chord.
 ---
+--- A PART-TYPED CHORD IS NOT AN ERROR. The chord string says where the fingers
+--- are, and a string it does not mention has no finger on it: the positions
+--- given are read from the low E upwards and every string past them comes back
+--- MUTED. So `x`, then `x3`, then `x32` walk the shape in from the low E and the
+--- grid follows the field on every keystroke, which is what the PRD's fifth user
+--- story asks for — "typing redraws the grid, so I can see immediately whether
+--- what I typed is the shape I meant". Until this was written a prefix was
+--- refused for its token count, and the diagram sat unchanged until the sixth
+--- character landed; the tester reported exactly that.
+---
+--- THE FRETS COME ENTIRELY FROM THE TEXT, and that is what makes typing
+--- REVERSIBLE. Backspacing walks the shape back out the way it came — `x3201`
+--- means `x3201x`, not the `x32010` whose last character was just deleted — and a
+--- field cleared to empty gives a bare neck. The alternative, letting an untyped
+--- string keep the value it happens to hold, leaves deleted characters on the
+--- grid and, after a clear and a retype, a chord blended out of two that the user
+--- cannot account for. A trailing separator says a fret is coming rather than
+--- that one is missing, and reads the same way: `10-12-` is two positions typed
+--- and four strings not yet spoken for.
+---
+--- WHAT IS STILL REFUSED is anything that cannot be the beginning of a chord:
+--- more positions than there are strings, or a token that is not a position at
+--- all. Both come back as nil and a message, and the caller goes on showing the
+--- last shape that read — a typo must never be applied as a shape in silence.
+---
 --- `from` is the voicing being edited, if there is one. Barres, finger numbers,
 --- a base-fret override and the name are carried across from it, because none
 --- of them can be written in the text form — parsing text has to MERGE into an
 --- existing chord rather than replace it, or retyping one string of a barre
 --- chord silently deletes the barre. This is a data-loss guard, not a
---- convenience.
+--- convenience. Note what the merge does and does not cover: everything the text
+--- CANNOT say is carried, and everything it CAN say is taken from the text.
 ---
 --- `name` is therefore an OVERRIDE and not a required argument: given, it
 --- renames; omitted, the chord keeps the name it had. A caller re-parsing on
@@ -105,9 +132,9 @@ end
 --- @return string|nil err
 function M.parse(text, name, from)
   local tokens = tokenise(tostring(text))
-  if #tokens ~= M.STRINGS then
+  if #tokens > M.STRINGS then
     return nil, string.format(
-      "A chord needs one position per string: %d, low E to high E. Got %d in '%s'.",
+      "A chord has one position per string: %d, low E to high E. Got %d in '%s'.",
       M.STRINGS, #tokens, text)
   end
 
@@ -121,6 +148,9 @@ function M.parse(text, name, from)
   end
 
   from = from or {}
+  -- `M.new` mutes every string the caller did not give a fret for, which is
+  -- exactly the rule a part-typed chord needs: the strings past the last one
+  -- typed carry no finger yet.
   return M.new({
     frets = frets,
     fingers = from.fingers,

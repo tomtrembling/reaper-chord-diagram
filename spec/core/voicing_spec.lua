@@ -51,9 +51,93 @@ describe("voicing", function()
     end)
   end)
 
+  describe("parsing a chord as it is being typed", function()
+    -- PRD user story 5: typing redraws the grid, so the user sees immediately
+    -- whether what they typed is the shape they meant. Immediately means on each
+    -- keystroke, so a prefix has to be readable as a chord in progress rather
+    -- than refused for its length. The rule: the positions typed are read from
+    -- the low E up, and every string past them has no finger on it yet.
+
+    it("reads a prefix as the strings typed so far, the rest not yet fingered", function()
+      assert.are.same({ -1, -1, -1, -1, -1, -1 }, assert(voicing.parse("x")).frets)
+      assert.are.same({ -1, 3, -1, -1, -1, -1 }, assert(voicing.parse("x3")).frets)
+      assert.are.same({ -1, 3, 2, -1, -1, -1 }, assert(voicing.parse("x32")).frets)
+      assert.are.same({ -1, 3, 2, 0, 1, 0 }, assert(voicing.parse("x32010")).frets)
+    end)
+
+    it("walks the shape in from the low E, one keystroke at a time", function()
+      -- Every keystroke must move exactly the string just typed. Nothing else
+      -- on the grid may change under a character being added to the end.
+      local previous = assert(voicing.parse("")).frets
+      for n = 1, #"x32010" do
+        local frets = assert(voicing.parse(("x32010"):sub(1, n))).frets
+        for i = 1, voicing.STRINGS do
+          if i ~= n then
+            assert.are.equal(previous[i], frets[i],
+              string.format("string %d moved while typing character %d", i, n))
+          end
+        end
+        previous = frets
+      end
+      assert.are.same({ -1, 3, 2, 0, 1, 0 }, previous)
+    end)
+
+    it("reads a trailing separator as a fret still to come", function()
+      -- `10-12-` is two positions typed and four strings not yet spoken for. It
+      -- is a prefix of `10-12-12-11-10-10`, not a chord with a gap in it.
+      assert.are.same({ 10, 12, -1, -1, -1, -1 }, assert(voicing.parse("10-12-")).frets)
+    end)
+
+    it("gives a bare neck for an empty field", function()
+      -- The limit of the same rule: nothing typed, nothing fingered. It is what
+      -- makes clearing the field and starting again predictable — see below.
+      assert.are.same({ -1, -1, -1, -1, -1, -1 }, assert(voicing.parse("")).frets)
+    end)
+
+    it("unwinds on backspace exactly the way it wound on, and cannot blend two chords",
+      function()
+        -- THE REASON THE FRETS COME ENTIRELY FROM THE TEXT. If an untyped string
+        -- kept whatever value it happened to hold, `x3201` would still show the
+        -- `0` just deleted from the high E, and a field cleared and retyped would
+        -- leave the user with a chord blended out of two that they could not
+        -- account for. The text is the whole truth about the frets, so what is on
+        -- the grid is always what is in the field.
+        local edited = assert(voicing.parse("x32010", "C"))
+        for n = #"x32010" - 1, 0, -1 do
+          local typed = ("x32010"):sub(1, n)
+          edited = assert(voicing.parse(typed, nil, edited))
+          assert.are.same(assert(voicing.parse(typed)).frets, edited.frets)
+        end
+        assert.are.same({ -1, -1, -1, -1, -1, -1 }, edited.frets)
+
+        -- Retyping a different chord over the cleared field gives that chord and
+        -- no trace of the one before it.
+        local retyped = assert(voicing.parse("133211", nil, edited))
+        assert.are.same({ 1, 3, 3, 2, 1, 1 }, retyped.frets)
+      end)
+
+    it("keeps the barre and the name while a chord is typed in from nothing", function()
+      -- The merge still covers everything the text form cannot say. Only the
+      -- frets are the text's business.
+      local F = voicing.new({
+        frets = { 1, 3, 3, 2, 1, 1 },
+        fingers = { 1, 3, 4, 2, 1, 1 },
+        name = "F",
+        barres = { { fret = 1, from = 1, to = 6 } },
+      })
+      local edited = assert(voicing.parse("13", nil, F))
+      assert.are.same({ 1, 3, -1, -1, -1, -1 }, edited.frets)
+      assert.are.same(F.barres, edited.barres)
+      assert.are.same(F.fingers, edited.fingers)
+      assert.are.equal("F", edited.name)
+    end)
+  end)
+
   describe("rejecting invalid input", function()
-    it("refuses a string with the wrong number of positions", function()
-      local v, err = voicing.parse("x3201")
+    it("refuses more positions than the instrument has strings", function()
+      -- Not a chord being typed: nothing follows a sixth string, so a seventh
+      -- position is a mistake and the caller must go on showing the last shape.
+      local v, err = voicing.parse("x320100")
       assert.is_nil(v)
       assert.is_truthy(err:find("6"))
     end)
@@ -64,33 +148,19 @@ describe("voicing", function()
       assert.is_truthy(err:find("z"))
     end)
 
-    it("refuses an empty string", function()
-      local v, err = voicing.parse("")
-      assert.is_nil(v)
-      assert.is_string(err)
-    end)
-
-    it("answers every prefix of a chord being typed without throwing", function()
-      -- Slice 007 re-parses on each keystroke, so every intermediate state of
-      -- both forms has to come back as either a voicing or a message. A prefix
-      -- may well be a complete chord in its own right; what it may never do is
-      -- raise, or hand back nothing at all.
+    it("answers every prefix of a chord being typed with a shape, and never throws", function()
+      -- The window re-parses on each keystroke, so every intermediate state of
+      -- both forms has to come back as a voicing. A prefix is a chord in
+      -- progress; what it may never do is raise, or hand back nothing at all.
       for _, text in ipairs({ "10-12-12-11-10-10", "x32010", "x-3-2-0-1-0" }) do
         for n = 1, #text do
           local typed = text:sub(1, n)
           local ok, v, err = pcall(voicing.parse, typed)
           assert.is_true(ok, "parsing '" .. typed .. "' threw: " .. tostring(v))
-          assert.is_true(v ~= nil or type(err) == "string",
-            "parsing '" .. typed .. "' refused without saying why")
+          assert.is_true(v ~= nil,
+            "parsing '" .. typed .. "' refused a prefix: " .. tostring(err))
         end
       end
-    end)
-
-    it("refuses a half-typed position rather than reading the gap as a string", function()
-      -- `10-12-` is four positions typed and two to go, not six.
-      local v, err = voicing.parse("10-12-")
-      assert.is_nil(v)
-      assert.is_truthy(err:find("6", 1, true))
     end)
 
     it("refuses a separated string with a token that is not a position", function()

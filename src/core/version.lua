@@ -25,6 +25,13 @@ M.CURRENT = "0.15.0"
 --- `adapter.imgui` reads this rather than carrying its own copy: the number the
 --- diagnostics report prints as the minimum and the number the shim is actually
 --- asked for must be the same number, or the report is fiction.
+---
+--- CONFIRMED ON A RUNNING INSTALL, at last: the first tester pass, against
+--- 0.15.0 on REAPER 7.78/x64, reported `ReaImGui 0.10.0.5 (versioned binding,
+--- API 0.9 requested, Dear ImGui 1.92.1)` and js_ReaScriptAPI 1.310. A 0.10
+--- install honoured a request for the 0.9 API through the versioned shim, which
+--- is exactly the behaviour this floor was chosen on the strength of and which
+--- until then had only been read about. Leave the number alone.
 M.MIN_REAIMGUI = "0.9"
 
 --- The oldest REAPER the plugin claims to run on.

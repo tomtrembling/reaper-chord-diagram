@@ -32,6 +32,33 @@ Wherever this document says 0.14.0, read 0.15.0.
    imported the repository and withdraws the *Chord Diagram (spike)* package from their list.
 4. Work Part 1 whenever — it needs nothing from the tester except the screenshots T43 brings back.
 
+## What came back from the first pass — 0.15.0, Windows
+
+**The first time any of `src/adapter/` has ever been executed.** Items ticked below are ticked
+because of this run; the versions are the ones every slice since 006 has asked for and never had.
+
+| | |
+| --- | --- |
+| REAPER | **7.78/x64** |
+| js_ReaScriptAPI | **1.310** |
+| ReaImGui | **0.10.0.5 — versioned binding, API 0.9 requested, Dear ImGui 1.92.1** |
+
+Read the ReaImGui line twice: the versioned shim resolved, and a **0.10 install honoured a request
+for the 0.9 API**. That is exactly the bet slice 006 made from documentation, and it is now
+observed rather than assumed. `M.API_VERSION` stays at 0.9.
+
+What the run settled, beyond the ticks: the action list shows the three scripts under their
+**filenames** (D19), left-aligned export text is **tolerable** (D22, option 1 taken), the diagnostics
+report reaches the **clipboard**, and the modules install **inside** the package folder (T3).
+
+One real defect came back — the grid only redrew when the sixth character landed — and it is fixed:
+`core.voicing.parse` now reads a part-typed chord instead of refusing it. **T8 and T9 below were
+rewritten with it**, along with items 5 and 6 of `issues/tester-checklist.md`, because both used to
+tell the tester that a grid frozen until the chord was complete was correct.
+
+One gap was recorded rather than fixed: the chord's name does not reach the Media Item Manager, so
+PRD user story 25 is not met — `issues/012-chord-name-in-the-item-manager.md`.
+
 **Tester:** work Part 2 in order. It is a session, not a list: nothing is checkable without a
 working install, so the install is first; the diagnostics report frames everything after it, so it
 is second; the window opening decides whether most of the rest is reachable at all, so it is third.
@@ -205,12 +232,31 @@ than on balance, and that distinction is what stops a later slice quietly revers
       from the index while still exiting 0. One package also means the tester installs once and the
       three actions can never be at different versions. The cost is that the actions cannot be
       installed separately, which nobody has asked for.
-- [ ] **D19 — The README lists both the filename and the `@description` for all three actions,**
-      because which of the two REAPER shows for a ReaPack-installed script has never been seen on a
-      running install. T2 brings back the answer; if it shows filenames only, drop the descriptions
-      from the README table.
+- [x] **D19 — SETTLED: REAPER shows the FILENAME.** The README listed both the filename and the
+      `@description` for all three actions, because which of the two REAPER shows for a
+      ReaPack-installed script had never been seen on a running install. T2 answered it: the action
+      list shows `chord_diagram.lua`, `chord_diagram_diagnostics.lua` and
+      `chord_diagram_regenerate.lua`, not the descriptions. The README's action table now gives the
+      filenames alone, and the prose names actions by filename too — a user hunting for the action
+      to bind a hotkey to should be reading the string they will actually see in the list.
 
 ## For the slice 011 style pass (issues/011-visual-style-pass.md)
+
+**A RESTYLE DOES NOT REDRAW WHAT IS ALREADY ON DISK, and the style pass is where that first
+bites.** An image's filename is a hash of the VOICING, not of the drawing: `core.voicing.canonical`
+covers the shape, the framing, the barres and the name, and nothing about how any of it is painted.
+So a change to `core.layout` gives an unchanged chord an unchanged filename, `adapter.diagram.attach`
+finds that file already present and skips the render, and the regenerate action — which exists to
+rebuild what is MISSING — skips it too. Existing diagrams keep the old drawing until their voicing
+changes.
+
+D22's box move is the first change to hit this and it is deliberately being left: the placement
+difference is small, it only shows in the export, and a chord edited at all picks it up. The style
+pass cannot leave it, because a whole project of diagrams in the old style is exactly what it must
+not produce. The options, when it gets there: add a style version to the hash (every existing
+diagram gets a new filename and is rebuilt on next open, at the cost of orphaning the old files), or
+give the regenerate action a "rebuild everything" mode that ignores whether the file exists. The
+second is smaller and is the one to reach for first.
 
 - [ ] **D20 — How the bar and the dots sit together.** The bar is a capsule exactly as thick as a
       dot, and the dots of the strings it covers are still drawn, on top of it. At this thickness
@@ -224,7 +270,29 @@ than on balance, and that distinction is what stops a later slice quietly revers
 
 ## Rendering fidelity
 
-- [ ] **D22 — The exported title is left-aligned where the on-screen one is centred, and it was
+- [x] **D22 — SETTLED: option 1. The tester judged left-aligned export text tolerable, and the
+      boxes moved to suit it.** Nothing was cut off, so the placement question was the only live
+      one. What changed in `core.layout`:
+      - The **title's box is now the grid's own span** (`GRID_LEFT`..`GRID_RIGHT`) rather than the
+        whole canvas, so the exported title starts over the low E string instead of hard against the
+        edge of the image. On screen nothing moves: the grid is centred on the canvas, so the box's
+        centre is where it always was.
+      - The **marker's box is the gutter inset by one stroke at each side**, so the exported marker
+        clears the image edge and stops short of the strings. Its width is unchanged — `12fr` all
+        but fills the gutter (T14), so there was none to give away — which incidentally centres it
+        in the gutter on screen, which it was not before.
+      - The alignment contract in the TEXT section of `core.layout` now says what a box means: its
+        **centre** is where the string sits on screen and its **top left** is where the string starts
+        in the PNG, so both edges have to be somewhere the string is wanted.
+      The on-screen centring is untouched — A3 documents the two backends differing, and the tester
+      has accepted it. **Consequence worth knowing:** image filenames hash the voicing, not the
+      drawing, so existing diagrams keep the old placement until their voicing changes and the
+      regenerate action skips images that already exist. See the note under 011.
+
+      *The item as it stood before the answer, kept because the reasoning is the record of why the
+      GDI rewrite was not taken:*
+
+      **The exported title is left-aligned where the on-screen one is centred, and it was
       left that way on purpose.** `align = "centre"` is honoured by the ImGui backend and dropped
       by the LICE one, because js_ReaScriptAPI exposes neither an alignment flag on
       `JS_LICE_DrawText` nor a text measurement that accounts for the font — both checked against
@@ -249,7 +317,7 @@ than on balance, and that distinction is what stops a later slice quietly revers
       string fits inside it, and a clipped title is a defect rather than a placement preference.
 
       Whichever it is, the alignment contract is now written down in the TEXT section of
-      `src/core/layout.lua` and should be updated with it.
+      `src/core/layout.lua` and should be updated with it. *(It was.)*
 
 ---
 
@@ -273,7 +341,8 @@ installed copy should look like:
     src/adapter/*.lua     (10 files)
 ```
 
-- [ ] **T1 [BLOCKER] A FRESH import, not a synchronise.** In ReaPack, remove any existing *Chord
+- [x] **T1 [BLOCKER] A FRESH import, not a synchronise.** *(Passed on 0.15.0: one package, installed
+      clean.)* In ReaPack, remove any existing *Chord
       Diagram* repository first (**Extensions → ReaPack → Manage repositories**, select it,
       **Remove**), then **Import repositories** with
       `https://github.com/tomtrembling/reaper-chord-diagram/raw/main/index.xml`. A stale local copy
@@ -282,41 +351,42 @@ installed copy should look like:
       (**0.14.0 or later** — never below it). The old
       *Chord Diagram (spike)* must be **gone**; if ReaPack lists it as obsolete and offers to
       uninstall it, accept.
-- [ ] **T2 [BLOCKER] [record] All three actions appear.** Install that one package, then
-      **Actions → Show action list** and search `chord_diagram`. Expect three entries, not one.
-      **Write down the exact names REAPER shows them under** — filenames, or the descriptions
-      (*Chord Diagram*, *Chord Diagram: copy diagnostics*, *Chord Diagram: regenerate missing
-      diagrams*). Nobody has ever seen which it is.
-- [ ] **T3 [BLOCKER] The modules landed where the scripts look for them.** Open the resource path
-      and confirm `src/core/` (7 `.lua` files) and `src/adapter/` (10 `.lua` files) are **inside**
-      the `Chord Diagram` folder, alongside the three scripts. If they are instead a level ABOVE —
-      beside the `Chord Diagram` folder rather than inside it — the plugin still runs (both
-      locations are on `package.path`), but say so: it means ReaPack resolved the install target
-      differently from the way `reapack-index` wrote it, and the retarget can be dropped.
+- [x] **T2 [BLOCKER] [record] ANSWERED: REAPER shows the FILENAMES.** All three appeared, listed as
+      `chord_diagram.lua`, `chord_diagram_diagnostics.lua` and `chord_diagram_regenerate.lua` — not
+      the `@description`s. That settles D19 and the README now gives filenames. Nothing to re-run.
+- [x] **T3 [BLOCKER] ANSWERED: the modules install INSIDE the package folder,** which is what the
+      `>` retarget in `@provides` intended. The diagnostics report resolved `Modules` to
+      `…\Scripts\Chord Diagram\Chord Diagram\src\core\version.lua`. The retarget stays. Note the
+      doubled folder name in that path — the repository name and the category folder — which is
+      normal for a ReaPack category and not a packaging fault.
 - [ ] **T4 [BLOCKER] Each of the three actions runs without a `require` error.** `module
       'core.voicing' not found` — or any other `module ... not found` — means the modules did not
       install. That is the entire point of this release: report it immediately and do not work
       through the rest of the queue.
 
+      *First pass: no `require` error anywhere. The diagnostics action and the editor both ran — the
+      editor far enough to type chords into. The regenerate action was not reported on, so leave
+      this one open until it has been.*
+
 ## 2. Diagnostics — run this before anything else, and again after every failure
 
-- [ ] **T5 [BLOCKER] [record] The diagnostics action runs and its report reaches the clipboard.**
-      Run *Chord Diagram: copy diagnostics* with nothing selected — it has no preconditions and
-      changes nothing. Paste the result somewhere and keep it. Expect four sections: Versions,
-      Paths, State, Last error.
-      - **Say whether it reached the clipboard or fell back to the ReaScript console** (the message
-        box says which). The clipboard goes through SWS's `CF_SetClipboard` if SWS is installed and
-        otherwise through ReaImGui's `SetClipboardText`, which needs a context this action creates
-        without ever opening a window. **A console fallback on a machine that HAS ReaImGui is the
-        interesting failure** — the lines to look at are `viaImGui` in `src/adapter/clipboard.lua`.
-      - **[record] the ReaImGui version line.** Expect something like
-        `ReaImGui 0.9.3.2 (versioned binding, API 0.9 requested, Dear ImGui 1.89.9)`.
-      - **[record] the REAPER version.** The floor is 6.44 and was inherited, not measured — see A6.
-      - **The `js_ReaScriptAPI` line must be populated at all.** "installed, version unknown" means
-        `JS_ReaScriptAPI_Version()` is the wrong name; not fatal, but say so.
-      - **The Paths section must resolve to real files**, in particular `Modules` (which `src/` root
-        ReaPack actually installed to — this answers T3 on its own) and `ReaImGui shim`. `unknown`
-        where a file should be is a packaging failure, not a diagnostic one.
+- [x] **T5 [BLOCKER] [record] PASSED, and every value it was asked for came back.** Run
+      *`chord_diagram_diagnostics.lua`* with nothing selected — it has no preconditions and changes
+      nothing. Four sections: Versions, Paths, State, Last error. What the first pass established:
+      - **It reached the CLIPBOARD**, not the console fallback. So the clipboard route works on a
+        real Windows install; `viaImGui` in `src/adapter/clipboard.lua` needs no attention.
+      - **ReaImGui 0.10.0.5 — versioned binding, API 0.9 requested, Dear ImGui 1.92.1.** The shim
+        resolved AND a 0.10 install honoured a request for the 0.9 API. That is slice 006's whole
+        gamble, observed. `M.API_VERSION` stays where it is.
+      - **REAPER 7.78/x64.** The 6.44 floor is inherited and still unmeasured (A6) — nothing here
+        tests it, it is simply far below what was run.
+      - **js_ReaScriptAPI 1.310**, a real version number: `JS_ReaScriptAPI_Version()` is the right
+        name.
+      - **Paths resolved to real files**, including `Modules` — see T3.
+      - **State read correctly** with nothing selected: `Would run now — no · Select an empty item
+        first…`, matching what the action itself refuses with.
+      Re-run it after any failure, as the header says, but there is nothing left to *establish*
+      here.
 
 ## 3. The window opens
 
@@ -329,6 +399,10 @@ and select it.
       a guess made from documentation rather than from a running REAPER, and A1 turns each symptom
       into a specific cause. If the default size is wrong, `WINDOW_W`/`WINDOW_H` in
       `src/adapter/imgui.lua` is the one place to change it.
+
+      *First pass: it opened, and was usable enough to type chords into and report on. The window's
+      SIZE was not commented on, so leave this open until someone says whether the Apply row needs
+      scrolling to reach.*
 - [ ] **T7 The window can be resized and the grid follows.** The grid is recomputed from the
       window's available space every frame, so it should stay square and stay clickable at any
       size. Drag it small: below a floor the grid stops shrinking and the buttons scroll, which is
@@ -336,14 +410,28 @@ and select it.
 
 ## 4. Typing a chord
 
-- [ ] **T8 Typing redraws the grid on every keystroke.** Type `x32010` into the Chord field one
-      character at a time. The diagram must follow along, and the intermediate states (`x`, `x3`,
-      `x32`…) must simply leave the last complete shape on screen — no error, no flicker, no window
-      that closes itself. Finished, expect: a cross above the nut on the low E, dots at frets 3, 2
-      and 1 on the A, D and B strings, open rings above the nut on the G and high E.
-- [ ] **T9 Half-typed and nonsense text changes nothing and says nothing.** Type `x3201z`, then
-      clear the field entirely. The diagram holds the last shape that parsed, and **no message may
-      appear** — half-typed input is the normal state of a field somebody is typing into. Say if the
+- [ ] **T8 Typing redraws the grid on every keystroke. REWRITTEN — THIS FAILED THE FIRST PASS.**
+      The report was "the diagram doesn't follow as I type, but fills in once all six characters
+      have been typed", and the item as it stood *told the tester that was correct*: it said the
+      intermediate states should "leave the last complete shape on screen". They should not.
+      `core.voicing.parse` refused every prefix for its token count; it now reads one.
+
+      Type `x32010` one character at a time. **The grid must move on every keystroke.** Each
+      character sets the next string along, and the strings not yet typed carry a **cross**: `x` is
+      six crosses, `x3` is a dot at the third fret of the A with crosses after it, `x32` adds the
+      D, and so on. Finished, expect: a cross above the nut on the low E, dots at frets 3, 2 and 1
+      on the A, D and B strings, open rings above the nut on the G and high E.
+
+      Then **backspace it away** one character at a time. It must unwind exactly as it wound on —
+      `x3201` is five positions and a cross on the high E, **not** the `0` just deleted still
+      sitting there — and an empty field is a bare neck. Then type `133211` into the emptied field:
+      that chord and no trace of the last one. A leftover fret from the previous chord is the
+      failure this design exists to prevent (the frets come entirely from the text, so what is on
+      the grid is always what is in the field).
+- [ ] **T9 Nonsense text changes nothing and says nothing.** Type `x3201z`: the `z` is not a
+      position, so the diagram stays exactly as it was at `x3201` and **no message may appear** —
+      a field somebody is working in holds nonsense as a matter of course. Then clear the field
+      entirely: that empties the neck, which is T8's rule and not a failure of this one. Say if the
       silence feels wrong in practice.
 - [ ] **T10 The field is not rewritten under the cursor while typing.** Type `x-3-2-0-1-0`, slowly.
       It must stay exactly as typed even though the chord it means is written `x32010` — the field
@@ -428,20 +516,34 @@ misfire gets reported as the specific thing it is.
       Item Manager**. Then do it once with a comma in the name — `C, second inversion` — and reopen
       the item: the name must come back intact, which is the check on the storage escaping. If the
       Item Manager does not surface the name at all, see **A4**.
+
+      *First pass: THE ITEM MANAGER DOES NOT SURFACE IT.* The tester judged that normal REAPER
+      behaviour — an empty item has no take, and the manager's name column reads the take's name —
+      and not a defect, which is right about the cause. It still means **PRD user story 25 is not
+      met**, so it is on the backlog rather than closed: see
+      `issues/012-chord-name-in-the-item-manager.md`. The rest of T25 (drawn as the title, shown on
+      the item in the arrange view, a comma surviving the round trip) still wants confirming.
 - [ ] **T26 A chord left unnamed is still titled with its own chord string.** That fallback survived
       the name field; it is now a default rather than the only route.
 - [ ] **T27 The title is centred on screen and LEFT-ALIGNED in the PNG. Confirm it, do not judge
       it.** This is established from js_ReaScriptAPI's source, not guessed, so it is a prediction to
       check rather than a question — see **A5** for why the extension leaves no way to do better.
+      **The first pass answered the judgement half: left-aligned is tolerable, nothing was cut off.
+      D22 took option 1 and the boxes moved to suit it, so what to expect in the PNG has CHANGED —
+      re-check it against the description below rather than against the last one.**
       Expect, on an item with a named chord and on `x79987`:
-      - **In the exported PNG:** the title starts hard against the **left edge of the image**, not
-        centred over the grid. The `7fr` marker likewise sits against the left edge rather than
-        centred in the gutter. Both are vertically at the top of their band rather than centred in
-        it.
+      - **In the exported PNG:** the title starts at the **low E string**, over the left edge of the
+        grid — no longer at the edge of the image. The `7fr` marker sits a hair in from the left
+        edge of the image and stops short of the strings, occupying the gutter. Both are vertically
+        at the top of their band rather than centred in it. **A title still at the very edge of the
+        image means the new boxes did not reach the render — most likely the diagram was never
+        redrawn**, since an image's filename hashes the voicing and not the drawing, so an existing
+        chord keeps its old picture. Edit the chord, or delete the PNG and reopen the item, before
+        reporting it.
       - **In the window:** both are centred, horizontally and vertically, and both read smaller and
         lighter than in the PNG (the window uses its own font — A3).
-      - **[record] Say whether the left-aligned title is tolerable.** It is a one-line answer that
-        settles **D22**: live with it, move the title's box, or take the GDI rewrite in A5.
+      - ~~**[record] Say whether the left-aligned title is tolerable.**~~ **ANSWERED: tolerable.**
+        D22 is settled — lived with, boxes moved, no GDI rewrite. Nothing to answer here again.
       - **Anything else is news.** A *centred* title in the PNG would mean LICE is not doing what
         its source says; report it. A title that is **cut off** is a different defect — the box is
         the clip rectangle, so a string too wide for it loses its tail. Watch `12fr` in particular
@@ -453,6 +555,11 @@ misfire gets reported as the specific thing it is.
       ImGui to see the key — that is correct, not a bug). **Escape while a text field is focused
       must NOT close the window**: there it means "undo what I typed", and losing the whole chord
       to it would be a defect.
+
+      *First pass: Escape closing the window and leaving the chord untouched was seen and judged
+      ACCEPTABLE — recorded, not treated as a defect. It is not clear whether a field was focused at
+      the time, so the second clause is still open: it is the one that matters, because losing a
+      whole chord to a keystroke meant for a field is not the same as closing a window.*
 - [ ] **T29 Reopening an item pre-fills everything.** Run the action again on an item that already
       carries a chord: the grid, the chord string, the name and the first fret must all come back
       as they were, including a barre, and the window's diagram must carry the name that chord
@@ -539,12 +646,17 @@ project, not on anything you care about.
 ## 10. Bring back
 
 - [ ] **T42 [prereq] Capture three real item state chunks.** Not a check — data the specs need.
-      Select an item and run a one-line ReaScript:
-      `local ok, c = reaper.GetItemStateChunk(reaper.GetSelectedMediaItem(0,0), "", false)
-      reaper.ShowConsoleMsg(c)`.
+      **Use the file `ref/capture_chunk.lua`; do NOT paste a snippet.** The first pass was sent the
+      code inline and it arrived as `unexpected symbol near ""` — copying Lua out of a chat window
+      turns straight quotes curly and can prepend an invisible byte-order mark, and Lua parses
+      neither. The script is now a file for that reason and for no other. Put it in REAPER's Scripts
+      folder (Options → Show REAPER resource path), then **Actions → Show action list → New action →
+      Load ReaScript** and pick it; select one item and run it.
       Do it for **an empty item** (→ `M.EMPTY_ITEM`), **an item that already carries a chord
       diagram** (→ `M.ITEM_WITH_CHORD`) and **an audio item** (→ `M.AUDIO_ITEM`), and send all
-      three back to paste over `spec/fixtures/item_chunks.lua`. Until then, the `core.chunk` specs
+      three back to paste over `spec/fixtures/item_chunks.lua`. The script prints how many takes
+      each item has, so the three are told apart at the point of capture rather than by eye
+      afterwards. Until then, the `core.chunk` specs
       prove the transformation against the format as documented, not against what REAPER emits
       (D1). The chord capture answers a second question too: how REAPER serialises the item's
       extended state (`P_EXT:chorddiagram`, where the voicing lives) into the chunk — the encoded

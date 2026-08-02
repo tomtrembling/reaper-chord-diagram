@@ -51,6 +51,14 @@ Every keystroke is parsed through `voicing.parse(text, nil, state.voicing)` — 
 merge — and a parse that fails is discarded in silence, because half-typed input is the ordinary
 state of a field somebody is typing into.
 
+**Corrected after the first tester pass.** "Typing a valid chord string redraws the grid
+immediately" was ticked on a reading of *valid* that only a COMPLETE six-position string satisfied,
+so the grid did not move until the sixth character landed — which the tester reported, and which is
+not the "see immediately" of user story 5. `core.voicing.parse` now reads a part-typed chord: the
+positions typed set their strings and the rest come back unfingered, so the shape walks in from the
+low E and back out on backspace. The merge is unchanged and still carries everything the text form
+cannot say; only the frets moved to being wholly the text's business.
+
 The UI-facing checks are in `issues/hitl-queue.md` under *Slice 007*, including the reinstatement of
 the checks slice 006 invalidated. Nothing in `src/adapter/imgui.lua` has been executed: REAPER is
 not installed on the dev machine, so `make verify` parses it and nothing more.

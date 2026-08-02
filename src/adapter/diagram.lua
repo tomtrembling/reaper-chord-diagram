@@ -87,9 +87,12 @@ function M.attach(item, original, v, projectDir)
   -- Pure string work, and it can fail, so it happens before anything is
   -- written rather than half way through the edit.
   local updated, chunkError = chunkOf.setImage(original, {
-    -- The chord name goes into the item's notes: that is both what REAPER shows
-    -- as the empty item's label and what makes it findable in the Item Manager.
-    -- A non-empty notes block is also what makes IMGRESOURCEFLAGS take effect.
+    -- The chord name goes into the item's notes: that is what REAPER shows as
+    -- the empty item's label in the arrange view, and a non-empty notes block is
+    -- also what makes IMGRESOURCEFLAGS take effect. It does NOT reach the Media
+    -- Item Manager — the tester confirmed that against 0.15.0, and the manager's
+    -- name column reads the active take's name, which an empty item has none of.
+    -- PRD user story 25 is therefore not met by this; see issue 012.
     filename = relative,
     flags = IMGRESOURCEFLAGS,
     notes = v.name,

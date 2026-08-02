@@ -157,6 +157,21 @@ describe("layout", function()
     assert.is_true(middle < lines[2].y1)
   end)
 
+  it("keeps the marker off the edge of the image and centred in its gutter", function()
+    -- The LICE backend draws from the box's LEFT EDGE, so a box starting at zero
+    -- puts the exported marker hard against the edge of the image — a placement
+    -- nobody chose. Inset by a stroke at each side it clears the edge, stops
+    -- short of the strings, and is centred in the gutter for the backend that
+    -- centres. The width is not reduced by the move: `12fr` all but fills it.
+    local computed = layout.compute(Bm, 1024, 1024)
+    local marker = withRole(computed, "position")[1]
+    local gutter = withRole(computed, "string")[1].x1
+
+    assert.are.equal(layout.STROKE, marker.x)
+    assert.are.equal(gutter - layout.STROKE * 2, marker.w)
+    assert.is_true(math.abs((marker.x + marker.w / 2) - gutter / 2) < 1e-9)
+  end)
+
   it("marks the open and muted strings, and only those", function()
     local computed = layout.compute(C, 1024, 1024)
     assert.are.same({ [4] = true, [6] = true }, markedStrings(computed, "open"))
@@ -197,6 +212,22 @@ describe("layout", function()
       end
     end
     assert.is_true(title.y + title.h <= highestMarker)
+  end)
+
+  it("gives the title the grid's own span, so it starts over the low E string", function()
+    -- The two edges of a text box that matter, and why this one is the grid:
+    -- the LICE backend starts the exported title at the box's LEFT edge, which
+    -- is therefore chosen — the low E string, a landmark on the diagram — rather
+    -- than left at the edge of the image; and the ImGui backend centres on the
+    -- box's CENTRE, which the grid being centred on the canvas leaves exactly
+    -- where the old full-width box had it. See the TEXT section of `core.layout`.
+    local computed = layout.compute(C, 1024, 1024)
+    local title = withRole(computed, "title")[1]
+    local strings = withRole(computed, "string")
+
+    assert.are.equal(strings[1].x1, title.x)
+    assert.are.equal(strings[#strings].x1, title.x + title.w)
+    assert.is_true(math.abs((title.x + title.w / 2) - 0.5) < 1e-9)
   end)
 
   it("draws no title when the chord has no name", function()
