@@ -1,6 +1,6 @@
 --[[
 @description Chord Diagram: copy diagnostics
-@version 0.15.0
+@version 0.16.0
 @author Tom Trembling
 @noindex
 @about
@@ -16,6 +16,7 @@
 
   Nothing is changed by running this.
 @changelog
+  0.16.0 No change; released alongside Chord Diagram 0.16.0.
   0.15.0 No change; released alongside Chord Diagram 0.15.0.
   0.14.0 No change; released alongside Chord Diagram 0.14.0.
   0.13.0 No change; released alongside Chord Diagram 0.13.0.

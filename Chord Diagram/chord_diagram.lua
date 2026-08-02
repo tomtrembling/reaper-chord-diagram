@@ -1,6 +1,6 @@
 --[[
 @description Chord Diagram
-@version 0.15.0
+@version 0.16.0
 @author Tom Trembling
 @provides
   [main] chord_diagram_diagnostics.lua
@@ -29,8 +29,7 @@
       finger reaches — all six or only two. Click the bar to take it away. A
       barre is only ever drawn because you drew it, and laying one moves no
       finger you have already placed.
-    - Type a name. It is drawn as the diagram's title and becomes the item's
-      name, so the chord is findable in the Media Item Manager.
+    - Type a name. It is drawn as the diagram's title and written to the item.
     - The first fret box says where the top of the grid sits. It fills itself
       in; change it to frame the chord where you think of it, and press Auto to
       hand the choice back.
@@ -56,6 +55,13 @@
 
   Requires REAPER 6.44 or newer, js_ReaScriptAPI and ReaImGui 0.9 or newer.
 @changelog
+  0.16.0 The grid now redraws on every keystroke rather than waiting for a
+        complete chord. A part-typed string is read as far as it goes and the
+        strings it does not mention are muted, so x3 is a dot on the A with
+        crosses after it, and backspacing unwinds exactly the way typing wound
+        on. In the exported image the title now starts over the grid and the
+        fret marker sits in from the edge, rather than either being pushed
+        against the edge of the picture.
   0.15.0 Lines in the exported PNG are drawn exactly as long as the layout asks
         for, rather than a half-stroke longer at each end. The nut and the
         muted-string crosses were the visible cases. The on-screen grid is
