@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Chord Diagram" commit="f87cd7b51b53b8b4086d0e9d255daa3ae8471ffc">
+<index version="1" name="Chord Diagram" commit="9f6b382d34c09bfdf948d8d6b296c0d55875a5a1">
   <category name="Chord Diagram">
     <reapack name="chord_diagram.lua" type="script" desc="Chord Diagram">
       <metadata>
@@ -19,7 +19,7 @@
 {\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls1\ilvl0\tx360 {\listtext\tab \bullet \tab} Type the chord as a string \u8212- x32010, or 10-12-12-11-10-10 above the ninth fret \u8212- and the grid redraws as you type.\par}
 {\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls1\ilvl0\tx360 {\listtext\tab \bullet \tab} Or click a cell to place a finger and click it again to remove it, click above the nut to ring a string open or mute it, and the chord string writes itself.\par}
 {\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls1\ilvl0\tx360 {\listtext\tab \bullet \tab} Drag across the strings at a fret to lay a barre over them, as far as the finger reaches \u8212- all six or only two. Click the bar to take it away. A barre is only ever drawn because you drew it, and laying one moves no finger you have already placed.\par}
-{\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls1\ilvl0\tx360 {\listtext\tab \bullet \tab} Type a name. It is drawn as the diagram's title and becomes the item's name, so the chord is findable in the Media Item Manager.\par}
+{\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls1\ilvl0\tx360 {\listtext\tab \bullet \tab} Type a name. It is drawn as the diagram's title and written to the item.\par}
 {\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls1\ilvl0\tx360 {\listtext\tab \bullet \tab} The first fret box says where the top of the grid sits. It fills itself in; change it to frame the chord where you think of it, and press Auto to hand the choice back.\par}
 {\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls1\ilvl0\tx360 {\listtext\tab \bullet \tab} Press Apply to write the diagram to the item, or Cancel or Escape to back out and leave the item exactly as it was.\par}
 {\pard \ql \f0 \fs24 \sa0 \li360 \fi-360\ls1\ilvl0\tx360 {\listtext\tab \bullet \tab} Run it again on the same item to edit the chord: the voicing is stored on the item, so it comes back already on the grid, and copying the item copies the chord with it.\sa180\par}
@@ -332,6 +332,80 @@
         <source file="src/adapter/item.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/f87cd7b51b53b8b4086d0e9d255daa3ae8471ffc/src/adapter/item.lua</source>
         <source file="src/adapter/lice.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/f87cd7b51b53b8b4086d0e9d255daa3ae8471ffc/src/adapter/lice.lua</source>
         <source file="src/adapter/project.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/f87cd7b51b53b8b4086d0e9d255daa3ae8471ffc/src/adapter/project.lua</source>
+      </version>
+      <version name="0.16.0" author="Tom Trembling" time="2026-08-02T05:20:20Z">
+        <changelog><![CDATA[0.16.0 The grid now redraws on every keystroke rather than waiting for a
+      complete chord. A part-typed string is read as far as it goes and the
+      strings it does not mention are muted, so x3 is a dot on the A with
+      crosses after it, and backspacing unwinds exactly the way typing wound
+      on. In the exported image the title now starts over the grid and the
+      fret marker sits in from the edge, rather than either being pushed
+      against the edge of the picture.
+0.15.0 Lines in the exported PNG are drawn exactly as long as the layout asks
+      for, rather than a half-stroke longer at each end. The nut and the
+      muted-string crosses were the visible cases. The on-screen grid is
+      unchanged; this brings the image into line with it.
+0.14.0 Packaging fix: installing the plugin now installs the modules the
+      actions are built from, so a fresh install runs. Every earlier release
+      shipped the action scripts alone and failed on their first `require`.
+      All three actions are now one package, installed and updated together.
+0.13.0 Missing diagrams repair themselves. Opening a chord whose image file
+      has gone rebuilds it silently before the window opens, and a third
+      action, "Chord Diagram: regenerate missing diagrams", rebuilds every
+      missing one in the project in a single undoable step and reports how
+      many. It skips items carrying no chord, leaves images that are already
+      there alone, and will not write to a chord it cannot read.
+0.12.0 Every refusal now explains itself: nothing selected, several items
+      selected, an item that is not empty, a missing extension named
+      individually, or a REAPER too old, each with its own message and
+      nothing modified. A second action, "Chord Diagram: copy diagnostics",
+      copies versions, resolved paths, what is selected and the last error to
+      the clipboard for a bug report. A failed write to the item is now
+      rolled back rather than leaving a diagram on an item whose chord data
+      did not get written.
+0.11.0 Barres, laid across the strings by dragging over them at a fret and
+      taken away by clicking the bar. Partial barres span exactly the strings
+      you dragged across. Nothing infers a barre and laying one moves no
+      finger, so a diagram never claims a fingering you did not choose.
+0.10.0 A text field for the chord string, synced both ways with the grid: type
+      and the grid redraws, click and the text rewrites itself. Half-typed
+      text changes nothing rather than complaining. A name field is back, and
+      the diagram's first fret can be set by hand or left to work itself out.
+0.9.0 The native input dialog is replaced by a window with a clickable
+      fretboard grid, drawn from the same layout as the exported image.
+      Clicking a cell places or clears a finger; clicking above the nut rings
+      a string open or mutes it. Apply writes and closes; Cancel and Escape
+      leave the item untouched. Until the next slice adds a name field, a new
+      chord is titled with its own chord string.
+0.8.0 High-position chords: the separated form 10-12-12-11-10-10, and a
+      diagram that frames itself from the lowest fretted fret with a marker
+      saying which fret that is.
+0.7.1 Chords are stored in the item's extended state, which REAPER saves with
+      the project, rather than on a custom line in the item state chunk.
+0.7.0 Chords are stored on the item and reloaded for editing; renaming a
+      chord no longer means rebuilding it.
+0.6.0 Real voicings typed as a chord string, rendered from the shared layout.
+0.5.0 Spike: settle on IMGRESOURCEFLAGS 3 with the square 1024 canvas.]]></changelog>
+        <source main="main">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/Chord%20Diagram/chord_diagram.lua</source>
+        <source main="main" file="chord_diagram_diagnostics.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/Chord%20Diagram/chord_diagram_diagnostics.lua</source>
+        <source main="main" file="chord_diagram_regenerate.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/Chord%20Diagram/chord_diagram_regenerate.lua</source>
+        <source file="src/core/chunk.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/core/chunk.lua</source>
+        <source file="src/core/diagnostics.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/core/diagnostics.lua</source>
+        <source file="src/core/layout.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/core/layout.lua</source>
+        <source file="src/core/preflight.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/core/preflight.lua</source>
+        <source file="src/core/recovery.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/core/recovery.lua</source>
+        <source file="src/core/version.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/core/version.lua</source>
+        <source file="src/core/voicing.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/core/voicing.lua</source>
+        <source file="src/adapter/clipboard.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/adapter/clipboard.lua</source>
+        <source file="src/adapter/console.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/adapter/console.lua</source>
+        <source file="src/adapter/deps.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/adapter/deps.lua</source>
+        <source file="src/adapter/diagram.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/adapter/diagram.lua</source>
+        <source file="src/adapter/dialog.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/adapter/dialog.lua</source>
+        <source file="src/adapter/errors.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/adapter/errors.lua</source>
+        <source file="src/adapter/imgui.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/adapter/imgui.lua</source>
+        <source file="src/adapter/item.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/adapter/item.lua</source>
+        <source file="src/adapter/lice.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/adapter/lice.lua</source>
+        <source file="src/adapter/project.lua">https://github.com/tomtrembling/reaper-chord-diagram/raw/9f6b382d34c09bfdf948d8d6b296c0d55875a5a1/src/adapter/project.lua</source>
       </version>
     </reapack>
   </category>
